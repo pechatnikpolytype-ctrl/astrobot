@@ -1,0 +1,65 @@
+# === Секреты ===
+.env
+.env.local
+*.pem
+*.key
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+ENV/
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# === Кеш ===
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# === Данные ===
+*.db
+*.sqlite
+*.sqlite3
+backups/
+logs/
+
+# === PDF и файлы ===
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+!static/*
+!fonts/*
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === ОС ===
+.DS_Store
+Thumbs.db
+$RECYCLE.BIN/
+desktop.ini
+
+# === Render / деплой ===
+.project_dump.txt
+project_dump.txt
+CLEAN_BUILD_LOG.txt
+download_files*.py
+fix_*.py
+test_*.py

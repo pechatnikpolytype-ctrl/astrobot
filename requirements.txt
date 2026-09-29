@@ -1,0 +1,14 @@
+--only-binary :all:
+aiogram>=3.4.0
+openai==1.6.1
+python-dotenv==1.0.0
+aiohttp
+aiosqlite==0.19.0
+asyncpg>=0.29.0
+reportlab==4.0.9
+flask[async]>=2.3.0
+gunicorn>=21.0.0
+matplotlib==3.9.2
+vedastro>=0.1.0
+cairosvg>=2.7.0
+httpx>=0.25.0
