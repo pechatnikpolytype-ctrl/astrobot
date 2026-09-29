@@ -1,9 +1,9 @@
 import asyncpg
 import logging
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from config import (
-    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, FREE_MODE
+    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, FREE_MODE, ADMINS
 )
 
 logger = logging.getLogger(__name__)
@@ -54,10 +54,17 @@ DEFAULT_TRIAL = {
     "days": 1,
 }
 
+DEFAULT_AI_LIMITS = {
+    "free": 20,
+    "premium": 100,
+    "count_cached": False,  # считать ли кэшированные ответы
+}
+
 
 async def init_postgres_db():
     pool = await db.create_pool()
     async with pool.acquire() as conn:
+        # --- USERS ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -72,6 +79,22 @@ async def init_postgres_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        for col, col_type in [
+            ("gender", "TEXT"),
+            ("bio", "TEXT"),
+            ("interests", "TEXT"),
+            ("goals", "TEXT"),
+            ("relationship_status", "TEXT"),
+            ("ai_notes", "TEXT"),
+            ("profile_completed", "BOOLEAN DEFAULT FALSE"),
+        ]:
+            try:
+                await conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {col_type}")
+            except Exception as e:
+                logger.warning(f"Миграция {col}: {e}")
+
+        # --- PAYMENTS ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS payments (
                 id SERIAL PRIMARY KEY,
@@ -82,6 +105,8 @@ async def init_postgres_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # --- REQUESTS ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS requests (
                 id SERIAL PRIMARY KEY,
@@ -89,6 +114,8 @@ async def init_postgres_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # --- SETTINGS ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -97,24 +124,71 @@ async def init_postgres_db():
             )
         """)
 
-        # Инициализация цен
-        existing = await conn.fetchval(
-            "SELECT value FROM settings WHERE key = 'pricing'"
-        )
+        # --- USER_NOTES ---
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_notes (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                note TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_notes_user ON user_notes(user_id)
+        """)
+
+        # --- AI_HISTORY ---
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_history (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                request_type TEXT NOT NULL,
+                request_key TEXT,
+                question TEXT,
+                answer TEXT NOT NULL,
+                model TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ai_history_key ON ai_history(request_key)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ai_history_user ON ai_history(user_id)
+        """)
+
+        # --- AI_USAGE (счётчик запросов) ---
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                user_id BIGINT NOT NULL,
+                usage_date DATE NOT NULL,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, usage_date)
+            )
+        """)
+
+        # --- Инициализация pricing ---
+        existing = await conn.fetchval("SELECT value FROM settings WHERE key = 'pricing'")
         if not existing:
             await conn.execute(
                 "INSERT INTO settings (key, value) VALUES ($1, $2)",
                 "pricing", json.dumps(DEFAULT_PRICING, ensure_ascii=False)
             )
 
-        # Инициализация триала
-        existing = await conn.fetchval(
-            "SELECT value FROM settings WHERE key = 'trial'"
-        )
+        # --- Инициализация trial ---
+        existing = await conn.fetchval("SELECT value FROM settings WHERE key = 'trial'")
         if not existing:
             await conn.execute(
                 "INSERT INTO settings (key, value) VALUES ($1, $2)",
                 "trial", json.dumps(DEFAULT_TRIAL, ensure_ascii=False)
+            )
+
+        # --- Инициализация ai_limits ---
+        existing = await conn.fetchval("SELECT value FROM settings WHERE key = 'ai_limits'")
+        if not existing:
+            await conn.execute(
+                "INSERT INTO settings (key, value) VALUES ($1, $2)",
+                "ai_limits", json.dumps(DEFAULT_AI_LIMITS, ensure_ascii=False)
             )
 
     logger.info("✅ Таблицы в PostgreSQL созданы/обновлены")
@@ -138,6 +212,24 @@ async def get_user(user_id: int):
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
         return dict(row) if row else None
+
+
+async def update_user_field(user_id: int, field: str, value):
+    allowed = {
+        "birth_date", "birth_time", "birth_place",
+        "gender", "bio", "interests", "goals",
+        "relationship_status", "ai_notes", "profile_completed",
+        "is_paid", "subscription_end", "trial_used",
+    }
+    if field not in allowed:
+        raise ValueError(f"Недопустимое поле: {field}")
+
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            f"UPDATE users SET {field} = $2 WHERE user_id = $1",
+            user_id, value
+        )
 
 
 async def update_birth_data(user_id: int, birth_date: str, birth_time: str, birth_place: str):
@@ -201,15 +293,12 @@ async def set_trial_used(user_id: int):
 
 
 async def reset_all_trials():
-    """Сбрасывает флаг trial_used у всех пользователей."""
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        result = await conn.execute("UPDATE users SET trial_used = FALSE")
-    return result
+        await conn.execute("UPDATE users SET trial_used = FALSE")
 
 
 async def count_trial_used() -> int:
-    """Сколько пользователей уже использовали триал."""
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         count = await conn.fetchval("SELECT COUNT(*) FROM users WHERE trial_used = TRUE")
@@ -240,6 +329,201 @@ async def get_stats():
         "total_stars": total_stars or 0,
         "total_payments": total_payments or 0,
     }
+
+
+# ============================================================
+# USER NOTES
+# ============================================================
+async def add_user_note(user_id: int, note: str):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchval(
+            "SELECT id FROM user_notes WHERE user_id = $1 AND note = $2",
+            user_id, note
+        )
+        if existing:
+            return
+        await conn.execute(
+            "INSERT INTO user_notes (user_id, note) VALUES ($1, $2)",
+            user_id, note
+        )
+
+
+async def get_user_notes(user_id: int):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, note, created_at FROM user_notes WHERE user_id = $1 ORDER BY created_at DESC",
+            user_id
+        )
+        return [dict(r) for r in rows]
+
+
+async def delete_user_note(note_id: int):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM user_notes WHERE id = $1", note_id)
+
+
+async def clear_user_notes(user_id: int):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM user_notes WHERE user_id = $1", user_id)
+
+
+# ============================================================
+# AI HISTORY
+# ============================================================
+async def save_ai_answer(user_id: int, request_type: str, request_key: str,
+                         question: str, answer: str, model: str = "gpt-4o-mini"):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO ai_history (user_id, request_type, request_key, question, answer, model)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        """, user_id, request_type, request_key, question, answer, model)
+
+
+async def get_ai_answer(request_key: str, request_type: str = None):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        if request_type:
+            row = await conn.fetchrow("""
+                SELECT answer, model, created_at FROM ai_history
+                WHERE request_key = $1 AND request_type = $2
+                ORDER BY created_at DESC LIMIT 1
+            """, request_key, request_type)
+        else:
+            row = await conn.fetchrow("""
+                SELECT answer, model, created_at FROM ai_history
+                WHERE request_key = $1
+                ORDER BY created_at DESC LIMIT 1
+            """, request_key)
+        return dict(row) if row else None
+
+
+async def get_ai_history(limit: int = 10):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT id, user_id, request_type, request_key, question, answer, model, created_at
+            FROM ai_history
+            ORDER BY created_at DESC LIMIT $1
+        """, limit)
+        return [dict(r) for r in rows]
+
+
+async def count_ai_history() -> int:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM ai_history") or 0
+
+
+async def clean_old_ai_history(days: int = 30):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            f"DELETE FROM ai_history WHERE created_at < NOW() - INTERVAL '{days} days'"
+        )
+        return result
+
+
+# ============================================================
+# AI LIMITS
+# ============================================================
+async def get_ai_limits() -> dict:
+    data = await get_setting("ai_limits", DEFAULT_AI_LIMITS)
+    if not isinstance(data, dict):
+        return DEFAULT_AI_LIMITS
+    if "free" not in data:
+        data["free"] = 20
+    if "premium" not in data:
+        data["premium"] = 100
+    if "count_cached" not in data:
+        data["count_cached"] = False
+    return data
+
+
+async def set_ai_limits(free: int, premium: int, count_cached: bool = None):
+    current = await get_ai_limits()
+    new = {
+        "free": free,
+        "premium": premium,
+        "count_cached": count_cached if count_cached is not None else current.get("count_cached", False),
+    }
+    await set_setting("ai_limits", new)
+
+
+async def get_user_ai_limit(user_id: int) -> int:
+    """Возвращает лимит для пользователя (-1 = без лимита)."""
+    if user_id in ADMINS:
+        return -1  # без лимита
+
+    limits = await get_ai_limits()
+    paid = await is_paid(user_id)
+    if paid:
+        return limits.get("premium", 100)
+    return limits.get("free", 20)
+
+
+async def get_ai_usage(user_id: int) -> int:
+    """Сколько запросов сделал пользователь сегодня."""
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT count FROM ai_usage WHERE user_id = $1 AND usage_date = $2",
+            user_id, today
+        )
+    return count or 0
+
+
+async def increment_ai_usage(user_id: int) -> int:
+    """Увеличивает счётчик на 1, возвращает новое значение."""
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO ai_usage (user_id, usage_date, count)
+            VALUES ($1, $2, 1)
+            ON CONFLICT (user_id, usage_date)
+            DO UPDATE SET count = ai_usage.count + 1
+        """, user_id, today)
+        count = await conn.fetchval(
+            "SELECT count FROM ai_usage WHERE user_id = $1 AND usage_date = $2",
+            user_id, today
+        )
+    return count or 0
+
+
+async def reset_all_ai_usage():
+    """Сбрасывает счётчики ВСЕМ пользователям."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM ai_usage")
+
+
+async def get_total_ai_usage_today() -> int:
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        total = await conn.fetchval(
+            "SELECT COALESCE(SUM(count), 0) FROM ai_usage WHERE usage_date = $1",
+            today
+        )
+    return total or 0
+
+
+async def get_top_ai_users(limit: int = 5):
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT user_id, count FROM ai_usage
+            WHERE usage_date = $1
+            ORDER BY count DESC LIMIT $2
+        """, today, limit)
+        return [dict(r) for r in rows]
 
 
 # ============================================================
@@ -298,3 +582,45 @@ async def get_trial() -> dict:
 
 async def set_trial(enabled: bool, days: int):
     await set_setting("trial", {"enabled": enabled, "days": days})
+
+
+# ============================================================
+# HOROSCOPE CACHE
+# ============================================================
+async def get_daily_horoscope():
+    data = await get_setting("daily_horoscope")
+    if not data or not isinstance(data, dict):
+        return None
+    today = datetime.now().strftime("%Y-%m-%d")
+    if data.get("date") == today:
+        return data.get("text")
+    return None
+
+
+async def set_daily_horoscope(text: str):
+    today = datetime.now().strftime("%Y-%m-%d")
+    await set_setting("daily_horoscope", {"date": today, "text": text})
+
+
+# ============================================================
+# COMPATIBILITY CACHE
+# ============================================================
+async def get_compat_cache(sign1: str, sign2: str):
+    key = "compat_" + "_".join(sorted([sign1.lower(), sign2.lower()]))
+    return await get_setting(key)
+
+
+async def set_compat_cache(sign1: str, sign2: str, data: dict):
+    key = "compat_" + "_".join(sorted([sign1.lower(), sign2.lower()]))
+    await set_setting(key, data)
+
+
+# ============================================================
+# NATAL CACHE
+# ============================================================
+async def get_natal_cache(cache_key: str):
+    return await get_setting(f"natal_{cache_key}")
+
+
+async def set_natal_cache(cache_key: str, text: str):
+    await set_setting(f"natal_{cache_key}", {"text": text})
