@@ -1,25 +1,29 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
 from services.pdf_generator import pdf_gen
+from services.natal_service import natal_service
 from keyboards.main import pdf_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
-from database.postgres_db import get_user, update_birth_data
+from database.postgres_db import get_user
 from ai_service_n1n import ai_service
 import logging
 import os
 import traceback
 from datetime import datetime
 
-router = Router()
 logger = logging.getLogger(__name__)
+router = Router()
 
 
+# ============================================================
+# МЕНЮ PDF
+# ============================================================
 @router.callback_query(F.data == "generate_pdf")
 async def pdf_menu(callback: CallbackQuery):
     text = (
-        "📄 PDF отчёты\n\n"
-        "Выберите тип отчёта:\n"
-        "• 🔮 Натальная карта — полный разбор\n"
-        "• 🌙 Личный гороскоп — прогноз на сегодня"
+        "📄 PDF ОТЧЁТЫ\n\n"
+        "Выберите тип отчёта:\n\n"
+        "🔮 Натальная карта — полный разбор с AI-анализом\n"
+        "🌙 Личный гороскоп — прогноз на сегодня"
     )
     try:
         await callback.message.edit_text(text, reply_markup=pdf_type_keyboard())
@@ -27,71 +31,153 @@ async def pdf_menu(callback: CallbackQuery):
         await callback.message.answer(text, reply_markup=pdf_type_keyboard())
 
 
+# ============================================================
+# PDF НАТАЛЬНОЙ КАРТЫ (полный + AI)
+# ============================================================
 @router.callback_query(F.data == "pdf_natal")
 async def pdf_natal(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_data = await get_user(user_id)
+
+    # Проверка профиля
     if not user_data or not user_data.get("birth_date"):
         await callback.message.edit_text(
-            "❌ Для создания PDF натальной карты нужны данные о рождении.",
+            "❌ Для создания PDF нужны данные о рождении.\n\n"
+            "Заполните профиль: Профиль → Редактировать.\n"
+            "Или создайте натальную карту вручную.",
             reply_markup=back_to_menu_keyboard()
         )
         return
 
-    msg = await callback.message.edit_text("📄 Создаю PDF натальной карты...")
+    msg = await callback.message.edit_text(
+        "📄 Создаю PDF натальной карты...\n\n"
+        "Это может занять 20-30 секунд."
+    )
+
     try:
-        data = {
-            "name": user_data.get("first_name", "Пользователь"),
-            "birth_date": user_data.get("birth_date", ""),
-            "birth_time": user_data.get("birth_time", "12:00"),
-            "birth_place": user_data.get("birth_place", "Не указано"),
-        }
-        pdf_path = pdf_gen.create_natal_chart_pdf(data)
+        # 1. Создаём полную натальную карту (VedAstro)
+        name = user_data.get("first_name") or "Пользователь"
+        birth_date = user_data.get("birth_date", "1990-01-01")
+        birth_time = user_data.get("birth_time") or "12:00"
+        birth_place = user_data.get("birth_place") or "Москва"
+
+        chart_data = await natal_service.create_natal_chart(
+            name, birth_date, birth_time, birth_place
+        )
+        logger.info(f"✅ Натальная карта создана для {name}")
+
+        # 2. AI-интерпретация
+        await msg.edit_text("🤖 AI анализирует карту...")
+        try:
+            ai_text = await natal_service.generate_ai_report(chart_data)
+            chart_data["ai_interpretation"] = (ai_text or "")[:1500]
+            logger.info(f"✅ AI-интерпретация: {len(chart_data['ai_interpretation'])} символов")
+        except Exception as e:
+            logger.error(f"Ошибка AI: {e}")
+            chart_data["ai_interpretation"] = ""
+
+        # 3. Создаём PDF
+        await msg.edit_text("📄 Создаю PDF...")
+        pdf_path = pdf_gen.create_natal_chart_pdf(chart_data)
+
         try:
             await msg.delete()
         except Exception:
             pass
+
+        # 4. Отправляем
         pdf_file = FSInputFile(pdf_path)
-        await callback.message.answer_document(pdf_file, caption="🔮 Ваша натальная карта")
-        await callback.message.answer("Выберите действие:", reply_markup=main_menu_keyboard(user_id))
-        os.remove(pdf_path)
-    except Exception as e:
-        logger.error(f"Ошибка при создании PDF: {e}\n{traceback.format_exc()}")
+        await callback.message.answer_document(
+            pdf_file,
+            caption=f"🔮 Натальная карта: {name}"
+        )
+        await callback.message.answer(
+            "📌 Выберите действие:",
+            reply_markup=main_menu_keyboard(user_id)
+        )
+
+        # 5. Удаляем файл
         try:
-            await msg.edit_text(f"❌ Ошибка: {str(e)}")
+            os.remove(pdf_path)
         except Exception:
-            await callback.message.answer(f"❌ Ошибка: {str(e)}")
+            pass
+
+    except Exception as e:
+        logger.error(f"Ошибка PDF: {e}\n{traceback.format_exc()}")
+        try:
+            await msg.edit_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=back_to_menu_keyboard()
+            )
+        except Exception:
+            await callback.message.answer(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=back_to_menu_keyboard()
+            )
 
 
+# ============================================================
+# PDF ГОРОСКОПА
+# ============================================================
 @router.callback_query(F.data == "pdf_horoscope")
 async def pdf_horoscope(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_data = await get_user(user_id)
+    user_name = "Пользователь"
+    if user_data:
+        user_name = user_data.get("first_name") or "Пользователь"
+
     msg = await callback.message.edit_text("🌙 Создаю PDF гороскопа...")
+
     try:
-        user_name = user_data.get("first_name", "Пользователь") if user_data else "Пользователь"
         today = datetime.now().strftime("%d.%m.%Y")
+
+        # Запрос к AI
         response = await ai_service.process_question(
             user_id,
-            f"Составь краткий гороскоп для {user_name} на сегодня. НЕ УПОМИНАЙ конкретные числа и даты."
+            f"Составь краткий персональный гороскоп для {user_name} на сегодня. "
+            f"НЕ упоминай конкретные числа и даты. 5-7 предложений."
         )
+
+        horoscope_text = response.get("message", "Сегодня звёзды благоволят вам.")
+
         pdf_data = {
             "user_name": user_name,
             "date": today,
-            "horoscope": response["message"],
+            "horoscope": horoscope_text,
         }
+
         pdf_path = pdf_gen.create_horoscope_pdf(pdf_data)
+
         try:
             await msg.delete()
         except Exception:
             pass
+
         pdf_file = FSInputFile(pdf_path)
-        await callback.message.answer_document(pdf_file, caption="🌙 Ваш гороскоп")
-        await callback.message.answer("Выберите действие:", reply_markup=main_menu_keyboard(user_id))
-        os.remove(pdf_path)
-    except Exception as e:
-        logger.error(f"Ошибка при создании PDF гороскопа: {e}\n{traceback.format_exc()}")
+        await callback.message.answer_document(
+            pdf_file,
+            caption=f"🌙 Гороскоп для {user_name}"
+        )
+        await callback.message.answer(
+            "📌 Выберите действие:",
+            reply_markup=main_menu_keyboard(user_id)
+        )
+
         try:
-            await msg.edit_text(f"❌ Ошибка: {str(e)}")
+            os.remove(pdf_path)
         except Exception:
-            await callback.message.answer(f"❌ Ошибка: {str(e)}")
+            pass
+
+    except Exception as e:
+        logger.error(f"Ошибка PDF гороскопа: {e}\n{traceback.format_exc()}")
+        try:
+            await msg.edit_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=back_to_menu_keyboard()
+            )
+        except Exception:
+            await callback.message.answer(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=back_to_menu_keyboard()
+            )

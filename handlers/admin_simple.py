@@ -11,12 +11,12 @@ from database.postgres_db import (
     reset_all_trials, count_trial_used,
     get_ai_limits, set_ai_limits,
     reset_all_ai_usage, get_total_ai_usage_today, get_top_ai_users,
-    get_ai_history, count_ai_history, clean_old_ai_history,
+    get_ai_history, count_ai_history,
+    clean_time_dependent_cache, clean_old_ai_history_v2, get_ai_cache_stats,
 )
 from datetime import datetime, timedelta
 import logging
 import asyncio
-import os
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -51,9 +51,9 @@ async def show_admin_panel(target, edit: bool = True):
         f"  • Бесплатных: {stats['free_users']}\n\n"
         f"⭐ Баланс: {stats['total_stars']} звёзд\n"
         f"💳 Платежей: {stats['total_payments']}\n\n"
-        f"🎁 Пробный период: {trial_status}\n"
-        f"🤖 AI-лимиты: free={ai_limits['free']}, premium={ai_limits['premium']}\n"
-        f"📊 AI-запросов сегодня: {ai_usage}\n\n"
+        f"🎁 Триал: {trial_status}\n"
+        f"🤖 AI: free={ai_limits['free']}, premium={ai_limits['premium']}\n"
+        f"📊 AI сегодня: {ai_usage}\n\n"
         f"💰 Тарифы:\n"
     )
     for plan, info in pricing.items():
@@ -64,24 +64,23 @@ async def show_admin_panel(target, edit: bool = True):
          InlineKeyboardButton(text="⭐ Баланс", callback_data="admin_balance")],
         [InlineKeyboardButton(text="🎁 Триал", callback_data="admin_trial"),
          InlineKeyboardButton(text="🤖 AI-лимиты", callback_data="admin_ai")],
+	 [InlineKeyboardButton(text="🔔 Напоминания", callback_data="admin_reminders"),
+     InlineKeyboardButton(text="🧹 Автоочистка", callback_data="admin_cleanup")],
         [InlineKeyboardButton(text="📜 История AI", callback_data="admin_ai_history"),
-         InlineKeyboardButton(text="💸 Вывод", callback_data="admin_withdraw")],
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
-         InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
+         InlineKeyboardButton(text="🗑️ Кэш AI", callback_data="admin_cache")],
+        [InlineKeyboardButton(text="📊 Стата", callback_data="admin_stats"),
+         InlineKeyboardButton(text="👥 Юзеры", callback_data="admin_users")],
         [InlineKeyboardButton(text="💎 Подписки", callback_data="admin_subs"),
          InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
+        [InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu")],
     ])
 
     if isinstance(target, Message):
         await target.answer(text, reply_markup=keyboard)
     else:
-        if edit:
-            try:
-                await target.message.edit_text(text, reply_markup=keyboard)
-            except Exception:
-                await target.message.answer(text, reply_markup=keyboard)
-        else:
+        try:
+            await target.message.edit_text(text, reply_markup=keyboard)
+        except Exception:
             await target.message.answer(text, reply_markup=keyboard)
 
 
@@ -96,7 +95,6 @@ async def admin_command(message: Message):
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel_callback(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
-        await callback.answer("Нет доступа")
         return
     await show_admin_panel(callback)
 
@@ -107,37 +105,140 @@ async def admin_back(callback: CallbackQuery):
 
 
 # ============================================================
+# 🗑️ КЭШ AI
+# ============================================================
+@router.callback_query(F.data == "admin_cache")
+async def admin_cache(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    stats = await get_ai_cache_stats()
+
+    text = (
+        f"🗑️ УПРАВЛЕНИЕ КЭШЕМ AI\n\n"
+        f"📊 Статистика:\n"
+        f"  • Всего записей: {stats['total']}\n"
+        f"  • Постоянных: {stats['permanent']}\n"
+        f"  • Временных: {stats['time_dependent']}\n"
+        f"  • Личных: {stats['personal']}\n"
+        f"  • Общих: {stats['general']}\n\n"
+        f"Что делают кнопки:\n"
+        f"  • Очистить временные — удалит ответы на 'сегодня', 'завтра'\n"
+        f"  • Очистить старые — удалит записи старше 14 дней\n"
+        f"  • Очистить ВСЁ — полностью сбросит кэш"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧹 Очистить временные", callback_data="cache_clear_temp")],
+        [InlineKeyboardButton(text="🗑️ Очистить старые (>14д)", callback_data="cache_clear_old")],
+        [InlineKeyboardButton(text="⚠️ Очистить ВСЁ", callback_data="cache_clear_all")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+    ])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "cache_clear_temp")
+async def cache_clear_temp(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    await clean_time_dependent_cache()
+    await callback.answer("✅ Временные удалены", show_alert=True)
+    await admin_cache(callback)
+
+
+@router.callback_query(F.data == "cache_clear_old")
+async def cache_clear_old(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    await clean_old_ai_history_v2(14)
+    await callback.answer("✅ Старые (>14д) удалены", show_alert=True)
+    await admin_cache(callback)
+
+
+@router.callback_query(F.data == "cache_clear_all")
+async def cache_clear_all_confirm(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ ДА, ОЧИСТИТЬ ВСЁ", callback_data="cache_clear_all_do")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_cache")],
+    ])
+    await callback.message.edit_text(
+        "⚠️ ОЧИСТИТЬ ВЕСЬ КЭШ?\n\nЭто удалит ВСЕ сохранённые ответы AI.\nНельзя отменить.",
+        reply_markup=keyboard
+    )
+
+
+@router.callback_query(F.data == "cache_clear_all_do")
+async def cache_clear_all_do(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM ai_history")
+    await callback.answer("✅ Кэш полностью очищен", show_alert=True)
+    await admin_cache(callback)
+
+
+# ============================================================
+# 📜 ИСТОРИЯ AI
+# ============================================================
+@router.callback_query(F.data == "admin_ai_history")
+async def admin_ai_history(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    total = await count_ai_history()
+    history = await get_ai_history(10)
+
+    text = f"📜 ИСТОРИЯ AI\n\nВсего: {total}\n\nПоследние 10:\n\n"
+    if not history:
+        text += "(пусто)"
+    else:
+        for i, h in enumerate(history, 1):
+            q = (h.get("question") or "")[:40]
+            date = str(h["created_at"])[:16] if h.get("created_at") else "?"
+            text += f"{i}. [{h['request_type']}] {q} ({date})\n"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑️ Управление кэшем", callback_data="admin_cache")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ai")],
+    ])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)
+
+
+# ============================================================
 # 🤖 AI-ЛИМИТЫ
 # ============================================================
 @router.callback_query(F.data == "admin_ai")
 async def admin_ai(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
-
     limits = await get_ai_limits()
     usage = await get_total_ai_usage_today()
     top = await get_top_ai_users(5)
 
     text = (
         f"🤖 AI-ЛИМИТЫ\n\n"
-        f"📊 Текущие настройки:\n"
-        f"  • Бесплатные: {limits['free']} запросов/день\n"
-        f"  • Премиум: {limits['premium']} запросов/день\n"
-        f"  • Считать кэш: {'✅' if limits.get('count_cached') else '❌'}\n\n"
-        f"📈 Сегодня:\n"
-        f"  • Всего запросов: {usage}\n\n"
+        f"📊 Настройки:\n"
+        f"  • Бесплатные: {limits['free']} /день\n"
+        f"  • Премиум: {limits['premium']} /день\n\n"
+        f"📈 Сегодня: {usage} запросов\n\n"
     )
-
     if top:
-        text += "🏆 Топ пользователей сегодня:\n"
+        text += "🏆 Топ:\n"
         for u in top:
             text += f"  • {u['user_id']}: {u['count']}\n"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✏️ Free ({limits['free']})", callback_data="ai_set_free")],
         [InlineKeyboardButton(text=f"✏️ Premium ({limits['premium']})", callback_data="ai_set_premium")],
-        [InlineKeyboardButton(text="🔄 Сбросить счётчики всем", callback_data="ai_reset_all")],
-        [InlineKeyboardButton(text="📜 История AI", callback_data="admin_ai_history")],
+        [InlineKeyboardButton(text="🔄 Сбросить счётчики", callback_data="ai_reset_all")],
+        [InlineKeyboardButton(text="📜 История", callback_data="admin_ai_history")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
     try:
@@ -153,10 +254,7 @@ async def ai_set_free_start(callback: CallbackQuery, state: FSMContext):
     limits = await get_ai_limits()
     await state.set_state(AdminStates.waiting_ai_limit_free)
     await callback.message.edit_text(
-        f"✏️ ЛИМИТ ДЛЯ БЕСПЛАТНЫХ\n\n"
-        f"Текущий: {limits['free']} запросов/день\n\n"
-        f"Введите новое значение (0 = отключить AI, -1 = без лимита):\n\n"
-        f"/cancel — отмена"
+        f"✏️ Free: {limits['free']}\n\nВведите новое значение (0 = отключить, -1 = без лимита):\n\n/cancel — отмена"
     )
 
 
@@ -173,12 +271,12 @@ async def ai_set_free_save(message: Message, state: FSMContext):
         if val < -1:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Введите число >= -1")
+        await message.answer("❌ Число >= -1")
         return
     limits = await get_ai_limits()
     await set_ai_limits(val, limits["premium"])
     await state.clear()
-    await message.answer(f"✅ Лимит для бесплатных: {val}")
+    await message.answer(f"✅ Free: {val}")
     await show_admin_panel(message)
 
 
@@ -189,10 +287,7 @@ async def ai_set_premium_start(callback: CallbackQuery, state: FSMContext):
     limits = await get_ai_limits()
     await state.set_state(AdminStates.waiting_ai_limit_premium)
     await callback.message.edit_text(
-        f"✏️ ЛИМИТ ДЛЯ ПРЕМИУМ\n\n"
-        f"Текущий: {limits['premium']} запросов/день\n\n"
-        f"Введите новое значение (0 = отключить AI, -1 = без лимита):\n\n"
-        f"/cancel — отмена"
+        f"✏️ Premium: {limits['premium']}\n\nВведите новое (0 = отключить, -1 = без лимита):\n\n/cancel — отмена"
     )
 
 
@@ -209,12 +304,12 @@ async def ai_set_premium_save(message: Message, state: FSMContext):
         if val < -1:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Введите число >= -1")
+        await message.answer("❌ Число >= -1")
         return
     limits = await get_ai_limits()
     await set_ai_limits(limits["free"], val)
     await state.clear()
-    await message.answer(f"✅ Лимит для Премиум: {val}")
+    await message.answer(f"✅ Premium: {val}")
     await show_admin_panel(message)
 
 
@@ -223,12 +318,11 @@ async def ai_reset_all_confirm(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="ai_reset_do")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_ai")],
+        [InlineKeyboardButton(text="✅ Да", callback_data="ai_reset_do")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data="admin_ai")],
     ])
     await callback.message.edit_text(
-        "🔄 Сбросить счётчики AI ВСЕМ пользователям?\n\n"
-        "После этого все снова смогут задавать вопросы.",
+        "🔄 Сбросить счётчики ВСЕМ?",
         reply_markup=keyboard
     )
 
@@ -238,43 +332,8 @@ async def ai_reset_do(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
     await reset_all_ai_usage()
-    await callback.answer("✅ Все счётчики сброшены", show_alert=True)
+    await callback.answer("✅ Сброшено", show_alert=True)
     await admin_ai(callback)
-
-
-@router.callback_query(F.data == "admin_ai_history")
-async def admin_ai_history(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
-        return
-    total = await count_ai_history()
-    history = await get_ai_history(10)
-
-    text = f"📜 ИСТОРИЯ AI\n\nВсего записей: {total}\n\nПоследние 10:\n\n"
-    if not history:
-        text += "(пусто)"
-    else:
-        for i, h in enumerate(history, 1):
-            q = (h.get("question") or "")[:40]
-            date = str(h["created_at"])[:16] if h.get("created_at") else "?"
-            text += f"{i}. [{h['request_type']}] {q} ({date})\n"
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧹 Очистить старые (>30 дней)", callback_data="ai_clean_old")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ai")],
-    ])
-    try:
-        await callback.message.edit_text(text, reply_markup=keyboard)
-    except Exception:
-        await callback.message.answer(text, reply_markup=keyboard)
-
-
-@router.callback_query(F.data == "ai_clean_old")
-async def ai_clean_old(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
-        return
-    await clean_old_ai_history(30)
-    await callback.answer("✅ Очищено", show_alert=True)
-    await admin_ai_history(callback)
 
 
 # ============================================================
@@ -286,18 +345,12 @@ async def admin_trial(callback: CallbackQuery):
         return
     trial = await get_trial()
     used_count = await count_trial_used()
-    status = "✅ ВКЛЮЧЁН" if trial.get("enabled") else "❌ ВЫКЛЮЧЕН"
-
-    text = (
-        f"🎁 ПРОБНЫЙ ПЕРИОД\n\n"
-        f"Статус: {status}\n"
-        f"Срок: {trial.get('days', 1)} дн.\n"
-        f"Уже использовали: {used_count} чел."
-    )
+    status = "✅ ВКЛ" if trial.get("enabled") else "❌ ВЫКЛ"
+    text = f"🎁 ТРИАЛ\n\nСтатус: {status}\nСрок: {trial.get('days', 1)} дн.\nИспользовали: {used_count} чел."
     toggle = "❌ Выключить" if trial.get("enabled") else "✅ Включить"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle, callback_data="trial_toggle")],
-        [InlineKeyboardButton(text="✏️ Изменить срок", callback_data="trial_change_days")],
+        [InlineKeyboardButton(text="✏️ Срок", callback_data="trial_change_days")],
         [InlineKeyboardButton(text="🔄 Сбросить флаг", callback_data="trial_reset")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
@@ -342,12 +395,12 @@ async def trial_set_days(message: Message, state: FSMContext):
         if days < 1 or days > 365:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Введите число 1-365")
+        await message.answer("❌ Число 1-365")
         return
     trial = await get_trial()
     await set_trial(trial.get("enabled", True), days)
     await state.clear()
-    await message.answer(f"✅ Срок триала: {days} дн.")
+    await message.answer(f"✅ Срок: {days} дн.")
     await show_admin_panel(message)
 
 
@@ -360,10 +413,7 @@ async def trial_reset_confirm(callback: CallbackQuery):
         [InlineKeyboardButton(text="✅ Да", callback_data="trial_reset_do")],
         [InlineKeyboardButton(text="❌ Нет", callback_data="admin_trial")],
     ])
-    await callback.message.edit_text(
-        f"⚠️ Сбросить флаг триала у {used} пользователей?\n\nНельзя отменить.",
-        reply_markup=keyboard
-    )
+    await callback.message.edit_text(f"⚠️ Сбросить флаг у {used} пользователей?", reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "trial_reset_do")
@@ -383,15 +433,13 @@ async def admin_pricing(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
     pricing = await get_pricing()
-    text = "💰 ЦЕНЫ И ТАРИФЫ\n\n"
+    text = "💰 ЦЕНЫ\n\n"
     for plan, info in pricing.items():
         text += f"  • {info['days']} дней — {info['stars']} ⭐\n"
-    text += "\nВыберите тариф для редактирования:"
-
     buttons = []
     for plan, info in pricing.items():
         buttons.append([InlineKeyboardButton(
-            text=f"✏️ {info['days']} дней ({info['stars']} ⭐)",
+            text=f"✏️ {info['days']}д ({info['stars']}⭐)",
             callback_data=f"price_edit_{plan}"
         )])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")])
@@ -404,14 +452,9 @@ async def price_edit_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
     plan = callback.data.replace("price_edit_", "")
-    pricing = await get_pricing()
-    info = pricing.get(plan, {})
     await state.update_data(plan=plan)
     await state.set_state(AdminStates.waiting_price_days)
-    await callback.message.edit_text(
-        f"✏️ Текущий: {info.get('days', '?')} дней — {info.get('stars', '?')} ⭐\n\n"
-        f"Введите новый СРОК в днях:\n\n/cancel — отмена"
-    )
+    await callback.message.edit_text("Введите новый СРОК в днях:\n\n/cancel — отмена")
 
 
 @router.message(AdminStates.waiting_price_days)
@@ -431,7 +474,7 @@ async def price_edit_days(message: Message, state: FSMContext):
         return
     await state.update_data(days=days)
     await state.set_state(AdminStates.waiting_price_stars)
-    await message.answer(f"✅ {days} дней\n\nВведите новую ЦЕНУ в звёздах:")
+    await message.answer(f"✅ {days} дней\n\nВведите ЦЕНУ в звёздах:")
 
 
 @router.message(AdminStates.waiting_price_stars)
@@ -450,13 +493,11 @@ async def price_edit_stars(message: Message, state: FSMContext):
         await message.answer("❌ 1-1000000")
         return
     data = await state.get_data()
-    plan = data["plan"]
-    days = data["days"]
     pricing = await get_pricing()
-    pricing[plan] = {"days": days, "stars": stars}
+    pricing[data["plan"]] = {"days": data["days"], "stars": stars}
     await set_pricing(pricing)
     await state.clear()
-    await message.answer(f"✅ Тариф обновлён: {days} дней — {stars} ⭐")
+    await message.answer(f"✅ {data['days']} дней — {stars} ⭐")
     await show_admin_panel(message)
 
 
@@ -469,15 +510,13 @@ async def admin_balance(callback: CallbackQuery):
         return
     stats = await get_stats()
     text = (
-        f"⭐ БАЛАНС ЗВЁЗД\n\n"
+        f"⭐ БАЛАНС\n\n"
         f"💎 Всего: {stats['total_stars']} ⭐\n"
         f"💳 Платежей: {stats['total_payments']}\n"
-        f"👥 Платных: {stats['paid_users']}\n\n"
-        f"Вывод — через @BotFather → Payments → Stars"
+        f"👥 Платных: {stats['paid_users']}"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💸 Как вывести", callback_data="admin_withdraw")],
-        [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_balance")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
     try:
@@ -491,15 +530,9 @@ async def admin_withdraw(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
     text = (
-        "💸 ВЫВОД СРЕДСТВ\n\n"
-        "Telegram не позволяет выводить звёзды через API.\n\n"
-        "Как вывести:\n"
-        "1. @BotFather → /mybots\n"
-        "2. Выбери бота\n"
-        "3. Bot Settings → Payments → Stars\n"
-        "4. Withdraw\n"
-        "5. Звёзды → TON → Fragment\n\n"
-        "Минимум для вывода: 1000 ⭐"
+        "💸 ВЫВОД\n\n"
+        "@BotFather → /mybots → бот → Payments → Stars → Withdraw\n\n"
+        "Минимум: 1000 ⭐"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⭐ Баланс", callback_data="admin_balance")],
@@ -522,27 +555,18 @@ async def admin_stats(callback: CallbackQuery):
     ai_usage = await get_total_ai_usage_today()
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        total_requests = await conn.fetchval("SELECT COUNT(*) FROM requests")
-        today_requests = await conn.fetchval(
-            "SELECT COUNT(*) FROM requests WHERE created_at >= CURRENT_DATE"
-        )
-        new_last_week = await conn.fetchval(
-            "SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'"
-        )
+        total_req = await conn.fetchval("SELECT COUNT(*) FROM requests")
+        today_req = await conn.fetchval("SELECT COUNT(*) FROM requests WHERE created_at >= CURRENT_DATE")
+        new_week = await conn.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'")
     text = (
         f"📊 СТАТИСТИКА\n\n"
-        f"👥 Пользователи:\n"
-        f"  • Всего: {stats['total_users']}\n"
-        f"  • Новых за 7 дней: {new_last_week or 0}\n"
-        f"  • Платных: {stats['paid_users']}\n\n"
-        f"📈 Запросы:\n"
-        f"  • Всего: {total_requests or 0}\n"
-        f"  • За сегодня: {today_requests or 0}\n"
-        f"  • AI сегодня: {ai_usage}\n\n"
-        f"💰 Финансы:\n"
-        f"  • Заработано: {stats['total_stars']} ⭐\n"
-        f"  • Платежей: {stats['total_payments']}\n\n"
-        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        f"👥 Всего: {stats['total_users']}\n"
+        f"🆕 За 7 дней: {new_week or 0}\n"
+        f"💎 Платных: {stats['paid_users']}\n\n"
+        f"📈 Запросов: {total_req or 0}\n"
+        f"📅 Сегодня: {today_req or 0}\n"
+        f"🤖 AI сегодня: {ai_usage}\n\n"
+        f"💰 Заработано: {stats['total_stars']} ⭐"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats")],
@@ -563,21 +587,21 @@ async def admin_users(callback: CallbackQuery):
         return
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        users = await conn.fetch(
-            "SELECT user_id, first_name, username, created_at, is_paid "
-            "FROM users ORDER BY created_at DESC LIMIT 10"
-        )
+        users = await conn.fetch("""
+            SELECT user_id, first_name, username, created_at, is_paid
+            FROM users ORDER BY created_at DESC LIMIT 10
+        """)
     if not users:
         await callback.message.edit_text("Нет пользователей")
         return
     text = "👥 Последние 10:\n\n"
     for i, u in enumerate(users, 1):
-        status = "💎" if u["is_paid"] else "🆓"
+        st = "💎" if u["is_paid"] else "🆓"
         name = u["first_name"] or u["username"] or str(u["user_id"])
-        created = str(u["created_at"])[:10] if u["created_at"] else "?"
-        text += f"{i}. {status} {u['user_id']} — {name} ({created})\n"
+        c = str(u["created_at"])[:10] if u["created_at"] else "?"
+        text += f"{i}. {st} {u['user_id']} — {name} ({c})\n"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔍 Поиск по ID", callback_data="admin_search_user")],
+        [InlineKeyboardButton(text="🔍 Поиск", callback_data="admin_search_user")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -587,7 +611,7 @@ async def admin_users(callback: CallbackQuery):
 async def admin_search_user(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
-    await callback.message.edit_text("🔍 Введите ID пользователя:")
+    await callback.message.edit_text("🔍 Введите ID:")
     await state.set_state(AdminStates.waiting_search)
 
 
@@ -600,22 +624,20 @@ async def process_user_search(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Неверный ID")
         return
-    user_data = await get_user(user_id)
-    if not user_data:
+    u = await get_user(user_id)
+    if not u:
         await message.answer("❌ Не найден")
         await state.clear()
         return
     text = (
-        f"👤 ПОЛЬЗОВАТЕЛЬ\n\n"
-        f"🆔 {user_data['user_id']}\n"
-        f"📝 {user_data.get('first_name', 'Не указано')}\n"
-        f"👤 @{user_data.get('username', 'Нет')}\n"
-        f"⭐ {'💎 Премиум' if user_data.get('is_paid') else '🆓 Бесплатный'}\n"
-        f"📅 до {user_data.get('subscription_end', 'Не активна')}\n"
-        f"🎂 {user_data.get('birth_date', 'Не указана')}"
+        f"👤 {u['user_id']}\n"
+        f"📝 {u.get('first_name', '?')}\n"
+        f"👤 @{u.get('username', 'Нет')}\n"
+        f"⭐ {'💎 Премиум' if u.get('is_paid') else '🆓 Бесплатный'}\n"
+        f"📅 до {u.get('subscription_end', 'Не активна')}"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Выдать подписку", callback_data=f"add_sub_{user_id}")],
+        [InlineKeyboardButton(text="➕ Подписка", callback_data=f"add_sub_{user_id}")],
         [InlineKeyboardButton(text="🔄 Сбросить триал", callback_data=f"reset_trial_{user_id}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
@@ -630,9 +652,7 @@ async def reset_user_trial(callback: CallbackQuery):
     user_id = int(callback.data.split("_")[2])
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE users SET trial_used = FALSE WHERE user_id = $1", user_id
-        )
+        await conn.execute("UPDATE users SET trial_used = FALSE WHERE user_id = $1", user_id)
     await callback.answer(f"✅ Триал сброшен для {user_id}", show_alert=True)
 
 
@@ -647,19 +667,17 @@ async def admin_subs(callback: CallbackQuery):
     next_week = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        paid_count = await conn.fetchval("SELECT COUNT(*) FROM users WHERE is_paid = TRUE")
-        expiring = await conn.fetch(
-            "SELECT user_id, first_name, username, subscription_end "
-            "FROM users WHERE is_paid = TRUE AND subscription_end BETWEEN $1 AND $2 "
-            "ORDER BY subscription_end LIMIT 5",
-            today, next_week
-        )
-    text = f"💎 ПОДПИСКИ\n\n👥 Активных: {paid_count}\n\n"
+        paid = await conn.fetchval("SELECT COUNT(*) FROM users WHERE is_paid = TRUE")
+        expiring = await conn.fetch("""
+            SELECT user_id, first_name, subscription_end FROM users
+            WHERE is_paid = TRUE AND subscription_end BETWEEN $1 AND $2
+            ORDER BY subscription_end LIMIT 5
+        """, today, next_week)
+    text = f"💎 ПОДПИСКИ\n\nАктивных: {paid}\n\n"
     if expiring:
-        text += "⚠️ Истекают в 7 дней:\n"
+        text += "⚠️ Истекают:\n"
         for u in expiring:
-            name = u["first_name"] or u["username"] or str(u["user_id"])
-            text += f"  • {u['user_id']} — {name} (до {u['subscription_end']})\n"
+            text += f"  • {u['user_id']} — до {u['subscription_end']}\n"
     else:
         text += "✅ Нет истекающих"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -686,8 +704,8 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Неверный ID")
         return
-    user_data = await get_user(user_id)
-    if not user_data:
+    u = await get_user(user_id)
+    if not u:
         await message.answer("❌ Не найден")
         await state.clear()
         return
@@ -700,10 +718,7 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
         [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")],
     ])
-    await message.answer(
-        f"👤 {user_data.get('first_name', user_id)}\n\nВыберите срок:",
-        reply_markup=keyboard
-    )
+    await message.answer(f"👤 {u.get('first_name', user_id)}\n\nВыберите срок:", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("sub_"))
@@ -717,15 +732,10 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
     if user_id:
         await set_subscription(user_id, days)
         end_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
-        await callback.message.edit_text(
-            f"✅ Подписка: {user_id} на {days} дней (до {end_date})"
-        )
+        await callback.message.edit_text(f"✅ {user_id} — {days} дней (до {end_date})")
         try:
             from loader import bot
-            await bot.send_message(
-                user_id,
-                f"🎉 Подписка активирована на {days} дней!\nДействует до: {end_date}"
-            )
+            await bot.send_message(user_id, f"🎉 Подписка на {days} дней! До {end_date}")
         except Exception:
             pass
     await state.clear()
@@ -746,10 +756,7 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
         [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")],
     ])
-    await callback.message.edit_text(
-        f"👤 Пользователь: {user_id}\n\nВыберите срок:",
-        reply_markup=keyboard
-    )
+    await callback.message.edit_text(f"👤 {user_id}\n\nВыберите срок:", reply_markup=keyboard)
 
 
 # ============================================================
@@ -759,9 +766,7 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
-    await callback.message.edit_text(
-        "📢 РАССЫЛКА\n\nВведите текст.\n\n/cancel — отмена"
-    )
+    await callback.message.edit_text("📢 Введите текст рассылки:\n\n/cancel — отмена")
     await state.set_state(AdminStates.waiting_broadcast)
 
 
@@ -774,7 +779,7 @@ async def process_broadcast(message: Message, state: FSMContext):
         await show_admin_panel(message)
         return
     await state.clear()
-    msg = await message.answer("📢 Начинаю рассылку...")
+    msg = await message.answer("📢 Рассылка...")
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         users = await conn.fetch("SELECT user_id FROM users")
@@ -788,9 +793,131 @@ async def process_broadcast(message: Message, state: FSMContext):
             await asyncio.sleep(0.05)
         except Exception:
             fail += 1
-    await msg.edit_text(
-        f"✅ Рассылка завершена\n\n"
-        f"📤 Отправлено: {success}\n"
-        f"❌ Не доставлено: {fail}"
-    )
+    await msg.edit_text(f"✅ Отправлено: {success}\n❌ Не доставлено: {fail}")
     await show_admin_panel(message)
+
+
+# ============================================================
+# 🔔 НАПОМИНАНИЯ
+# ============================================================
+@router.callback_query(F.data == "admin_reminders")
+async def admin_reminders(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import get_reminder_settings
+    settings = await get_reminder_settings()
+    enabled = settings.get("enabled", True)
+    status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
+
+    text = (
+        f"🔔 НАПОМИНАНИЯ О ПРОФИЛЕ\n\n"
+        f"Статус: {status}\n\n"
+        f"Что делают напоминания:\n"
+        f"  • Пользователям с пустым профилем\n"
+        f"  • Не чаще раза в 7 дней\n"
+        f"  • В 18:00 UTC\n"
+        f"  • С кнопкой 'Заполнить профиль'\n\n"
+        f"Неактивные (> 30 дней) — не получают.\n"
+    )
+    toggle = "❌ Выключить" if enabled else "✅ Включить"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle, callback_data="reminders_toggle")],
+        [InlineKeyboardButton(text="🧪 Тест (себе)", callback_data="reminders_test")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+    ])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "reminders_toggle")
+async def reminders_toggle(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import get_reminder_settings, set_reminder_settings
+    settings = await get_reminder_settings()
+    new_enabled = not settings.get("enabled", True)
+    await set_reminder_settings(new_enabled)
+    await callback.answer("✅ Изменено", show_alert=True)
+    await admin_reminders(callback)
+
+
+@router.callback_query(F.data == "reminders_test")
+async def reminders_test(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    try:
+        from services.reminder import send_test_reminder
+        from loader import bot
+        ok = await send_test_reminder(bot, callback.from_user.id)
+        if ok:
+            await callback.answer("✅ Отправлено", show_alert=True)
+        else:
+            await callback.answer("❌ Ошибка", show_alert=True)
+    except Exception as e:
+        logger.error(f"Тест напоминаний: {e}")
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+
+# ============================================================
+# 🧹 АВТООЧИСТКА КЭША
+# ============================================================
+@router.callback_query(F.data == "admin_cleanup")
+async def admin_cleanup(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import get_cache_cleanup_settings, get_ai_cache_stats
+    settings = await get_cache_cleanup_settings()
+    stats = await get_ai_cache_stats()
+    enabled = settings.get("enabled", True)
+    status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
+
+    text = (
+        f"🧹 АВТООЧИСТКА КЭША\n\n"
+        f"Статус: {status}\n\n"
+        f"Расписание: 03:00 UTC ежедневно\n"
+        f"Удаляет:\n"
+        f"  • Временные > 7 дней\n"
+        f"  • Постоянные > 90 дней\n\n"
+        f"📊 Текущее состояние:\n"
+        f"  • Всего записей: {stats['total']}\n"
+        f"  • Временных: {stats['time_dependent']}\n"
+        f"  • Постоянных: {stats['permanent']}\n"
+    )
+    toggle = "❌ Выключить" if enabled else "✅ Включить"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle, callback_data="cleanup_toggle")],
+        [InlineKeyboardButton(text="🧪 Запустить сейчас", callback_data="cleanup_now")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+    ])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "cleanup_toggle")
+async def cleanup_toggle(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import get_cache_cleanup_settings, set_cache_cleanup_settings
+    settings = await get_cache_cleanup_settings()
+    new_enabled = not settings.get("enabled", True)
+    await set_cache_cleanup_settings(new_enabled)
+    await callback.answer("✅ Изменено", show_alert=True)
+    await admin_cleanup(callback)
+
+
+@router.callback_query(F.data == "cleanup_now")
+async def cleanup_now(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    try:
+        from database.postgres_db import auto_clean_cache
+        await auto_clean_cache()
+        await callback.answer("✅ Очистка выполнена", show_alert=True)
+    except Exception as e:
+        logger.error(f"Очистка: {e}")
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+    await admin_cleanup(callback)

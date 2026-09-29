@@ -4,6 +4,7 @@ import random
 import asyncio
 import re
 import json
+import hashlib
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -18,21 +19,29 @@ from database.postgres_db import (
 logger = logging.getLogger(__name__)
 
 
+# Слова, обозначающие время
+TIME_WORDS = {
+    "сегодня", "завтра", "вчера", "послезавтра",
+    "неделя", "неделю", "неделе", "недели", "недель",
+    "месяц", "месяца", "месяце", "месяцев",
+    "год", "года", "году", "лет",
+    "этот", "эта", "это", "эти", "этом", "этой",
+    "следующий", "следующая", "следующее", "следующие",
+    "прошлый", "прошлая", "прошлое", "прошлые",
+    "будущий", "будущая", "будущее", "будущие",
+    "сейчас", "скоро", "потом",
+    "понедельник", "вторник", "среда", "четверг",
+    "пятница", "суббота", "воскресенье",
+}
+
+
 class N1NService:
-    """AI-сервис на базе n1n.ai (OpenAI-совместимый API)."""
 
     def __init__(self):
         self.api_key = N1N_API_KEY
         self.base_url = N1N_BASE_URL or "https://api.n1n.ai/v1"
         self.model = N1N_MODEL or "gpt-4o-mini"
-
-        # Модели по приоритету (fallback если основная недоступна)
-        self.fallback_models = [
-            self.model,
-            "gpt-4o-mini",
-            "gpt-4o",
-        ]
-
+        self.fallback_models = [self.model, "gpt-4o-mini", "gpt-4o"]
         logger.info(f"🤖 N1N Service инициализирован. Модель: {self.model}")
 
     # ============================================================
@@ -40,32 +49,19 @@ class N1NService:
     # ============================================================
     async def process_question(self, user_id: int, question: str,
                                 use_cache: bool = True) -> Dict[str, Any]:
-        """
-        Обрабатывает вопрос пользователя.
-        Возвращает: {
-            'message': str,
-            'from_cache': bool,
-            'model': str,
-            'facts': List[str],
-            'request_key': str,
-        }
-        """
         try:
-            user_data = await get_user(user_id)
-            if not user_data:
-                user_data = {}
-
-            # 1. Определяем тип вопроса
+            user_data = await get_user(user_id) or {}
             qtype = self._detect_question_type(question)
+            is_time_dep = self._is_time_dependent(question)
 
-            # 2. Строим ключ кэша
-            if qtype == "personal":
-                profile_hash = self._get_profile_hash(user_data)
-                request_key = f"personal_{self._hash(question)}_{profile_hash}"
-            else:
-                request_key = f"general_{self._hash(question)}"
+            request_key = self._build_cache_key(
+                question=question,
+                qtype=qtype,
+                user_data=user_data,
+                is_time_dependent=is_time_dep,
+            )
 
-            # 3. Проверяем кэш
+            # Кэш
             if use_cache:
                 cached = await get_ai_answer(request_key)
                 if cached:
@@ -78,34 +74,28 @@ class N1NService:
                         "request_key": request_key,
                     }
 
-            # 4. Строим контекст из профиля (для личных вопросов)
+            # Контекст
             context = ""
             if qtype == "personal":
                 context = await self._build_context(user_id, user_data)
 
-            # 5. Промпт
             system_prompt = self._get_system_prompt(qtype)
             user_prompt = self._build_user_prompt(question, context)
 
-            # 6. Запрос к AI
             answer = await self._query_ai(system_prompt, user_prompt)
 
             if not answer:
-                # AI упал — fallback
                 await self._notify_admins_error(question, "AI не ответил")
-                fallback = self._get_fallback_answer(question)
                 return {
-                    "message": fallback,
+                    "message": self._get_fallback_answer(question),
                     "from_cache": False,
                     "model": "fallback",
                     "facts": [],
                     "request_key": request_key,
                 }
 
-            # 7. Очистка ответа
             answer = self._clean_response(answer)
 
-            # 8. Сохраняем в кэш
             await save_ai_answer(
                 user_id=user_id,
                 request_type="question",
@@ -115,11 +105,12 @@ class N1NService:
                 model=self.model,
             )
 
-            # 9. Извлекаем факты (только для личных)
+            # Извлечение фактов — для ВСЕХ личных
             facts = []
             if qtype == "personal":
                 try:
                     facts = await self.extract_user_facts(question, answer)
+                    logger.info(f"📝 Извлечено фактов: {len(facts)}")
                 except Exception as e:
                     logger.warning(f"Ошибка извлечения фактов: {e}")
 
@@ -143,29 +134,259 @@ class N1NService:
             }
 
     # ============================================================
+    # КЛЮЧ КЭША
+    # ============================================================
+    def _build_cache_key(self, question: str, qtype: str,
+                         user_data: Dict, is_time_dependent: bool) -> str:
+        q_hash = self._hash(question)
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        if qtype == "personal":
+            profile_hash = self._get_profile_hash(user_data)
+            if is_time_dependent:
+                return f"personal_{q_hash}_{profile_hash}_{today}"
+            return f"personal_{q_hash}_{profile_hash}"
+        else:
+            if is_time_dependent:
+                return f"general_{q_hash}_{today}"
+            return f"general_{q_hash}"
+
+    def _is_time_dependent(self, question: str) -> bool:
+        q_lower = question.lower()
+        words = re.findall(r"\b\w+\b", q_lower)
+        return any(w in TIME_WORDS for w in words)
+
+    # ============================================================
+    # ОПРЕДЕЛЕНИЕ ТИПА ВОПРОСА
+    # ============================================================
+    def _detect_question_type(self, question: str) -> str:
+        """Определяет тип вопроса: личный или общий."""
+        q_lower = question.lower()
+        words = re.findall(r"\b\w+\b", q_lower)
+
+        personal_pronouns = {
+            "я", "мне", "меня", "мой", "моя", "мои", "моё", "моего", "моей",
+            "мной", "мною", "себя", "себе", "собой", "нам", "нас", "наш",
+            "наша", "наши", "моих", "моему", "моим",
+        }
+        if any(w in personal_pronouns for w in words):
+            return "personal"
+
+        personal_phrases = [
+            "люблю", "нравится", "работаю", "живу", "занимаюсь",
+            "хочу", "устал", "устала", "боюсь", "мечтаю", "планирую",
+            "у меня", "у нас",
+        ]
+        if any(phrase in q_lower for phrase in personal_phrases):
+            return "personal"
+
+        return "general"
+
+    # ============================================================
+    # ИЗВЛЕЧЕНИЕ ФАКТОВ
+    # ============================================================
+    async def extract_user_facts(self, question: str, answer: str) -> List[str]:
+        """Извлекает факты о пользователе из диалога."""
+        system_prompt = (
+            "Ты — анализатор личных фактов. Извлеки факты из СООБЩЕНИЯ пользователя.\n\n"
+            "Примеры:\n"
+            "• «Я программист» → [\"Работает программистом\"]\n"
+            "• «Люблю кофе» → [\"Любит кофе\"]\n"
+            "• «Мне 30 лет» → [\"Возраст: 30 лет\"]\n"
+            "• «У меня двое детей» → [\"Есть двое детей\"]\n"
+            "• «Живу в Москве» → [\"Живёт в Москве\"]\n"
+            "• «Занимаюсь спортом» → [\"Занимается спортом\"]\n"
+            "• «Хочу найти работу» → [\"Хочет найти работу\"]\n\n"
+            "НЕ включай:\n"
+            "• вопросы пользователя («Что меня ждёт?»)\n"
+            "• предположения AI\n"
+            "• общие фразы («интересно», «подскажи»)\n"
+            "• эмоции без контекста\n\n"
+            "ВАЖНО: если пользователь пишет утверждение о себе — это факт. "
+            "Даже если это короткая фраза без вопроса.\n\n"
+            "Формат: JSON-массив строк.\n"
+            "Пример: [\"Работает в IT\", \"Любит кофе\"]\n"
+            "Если фактов НЕТ — верни [].\n"
+            "Максимум 3 факта, каждый до 100 символов."
+        )
+
+        user_prompt = (
+            f"Сообщение пользователя: {question}\n"
+            f"Ответ AI: {answer}\n\n"
+            f"Извлеки факты о пользователе (только утверждения о СЕБЕ)."
+        )
+
+        raw = await self._query_ai(system_prompt, user_prompt, max_tokens=200)
+        if not raw:
+            return []
+
+        try:
+            match = re.search(r"\[.*?\]", raw, re.DOTALL)
+            if match:
+                facts = json.loads(match.group())
+                if isinstance(facts, list):
+                    return [str(f)[:100] for f in facts[:3]]
+        except Exception as e:
+            logger.debug(f"Парсинг фактов: {e}")
+
+        return []
+
+    # ============================================================
+    # КОНТЕКСТ ПРОФИЛЯ
+    # ============================================================
+    async def _build_context(self, user_id: int, user: Dict[str, Any]) -> str:
+        parts = []
+        if user.get("first_name"):
+            parts.append(f"Имя: {user['first_name']}")
+        if user.get("birth_date"):
+            zodiac = ""
+            try:
+                from astrology_calculator import AstrologyCalculator
+                birth_date = datetime.strptime(user["birth_date"], "%Y-%m-%d")
+                zodiac = AstrologyCalculator.get_zodiac_sign(birth_date)
+            except Exception:
+                pass
+            line = f"Дата рождения: {user['birth_date']}"
+            if user.get("birth_time"):
+                line += f" в {user['birth_time']}"
+            if user.get("birth_place"):
+                line += f", {user['birth_place']}"
+            if zodiac:
+                line += f" (знак: {zodiac})"
+            parts.append(line)
+        if user.get("gender"):
+            parts.append(f"Пол: {user['gender']}")
+        if user.get("bio"):
+            parts.append(f"О себе: {user['bio']}")
+        if user.get("interests"):
+            parts.append(f"Интересы: {user['interests']}")
+        if user.get("goals"):
+            parts.append(f"Цели: {user['goals']}")
+        if user.get("relationship_status"):
+            parts.append(f"Статус отношений: {user['relationship_status']}")
+
+        notes = await get_user_notes(user_id)
+        if notes:
+            parts.append("Важные факты о пользователе:")
+            for n in notes[:10]:
+                parts.append(f"  • {n['note']}")
+
+        if not parts:
+            return ""
+        return "ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n" + "\n".join(parts)
+
+    def _get_system_prompt(self, qtype: str) -> str:
+        base = (
+            "Ты — профессиональный астролог с 20-летним опытом.\n"
+            "Требования:\n"
+            "- НЕ используй markdown (**, __, `)\n"
+            "- Используй эмодзи для оформления\n"
+            "- Тон: тёплый, дружелюбный, поддерживающий\n"
+            "- Отвечай на русском\n"
+            "- НЕ упоминай конкретные числа месяца\n"
+        )
+        if qtype == "personal":
+            return base + (
+                "\nУчитывай ИНФОРМАЦИЮ О ПОЛЬЗОВАТЕЛЕ ниже.\n"
+                "Отвечай персонально, обращайся по имени, учитывай цели.\n"
+                "4-6 предложений, по делу."
+            )
+        return base + "\nОтвечай информативно, 4-6 предложений."
+
+    def _build_user_prompt(self, question: str, context: str) -> str:
+        if context:
+            return f"{context}\n\nВопрос пользователя: {question}"
+        return f"Вопрос пользователя: {question}"
+
+    # ============================================================
+    # ЗАПРОС К AI
+    # ============================================================
+    async def _query_ai(self, system_prompt: str, user_prompt: str,
+                        max_tokens: int = 800) -> Optional[str]:
+        if not self.api_key:
+            logger.error("❌ N1N_API_KEY не установлен")
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        for model_try in self.fallback_models:
+            data = {
+                "model": model_try,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.8,
+                "max_tokens": max_tokens,
+            }
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=data,
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        return result["choices"][0]["message"]["content"]
+                    else:
+                        logger.warning(f"❌ {model_try} {response.status_code}")
+            except httpx.TimeoutException:
+                logger.warning(f"⏰ Таймаут {model_try}")
+            except Exception as e:
+                logger.warning(f"❌ {model_try}: {e}")
+        return None
+
+    def _clean_response(self, text: str) -> str:
+        if not text:
+            return text
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+        text = re.sub(r"__(.+?)__", r"\1", text)
+        text = re.sub(r"`(.+?)`", r"\1", text)
+        text = re.sub(r"\*(.+?)\*", r"\1", text)
+        text = re.sub(r"#{1,6}\s*", "", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    def _hash(self, text: str) -> str:
+        return hashlib.md5(text.encode("utf-8")).hexdigest()[:16]
+
+    def _get_profile_hash(self, user: Dict[str, Any]) -> str:
+        parts = [
+            str(user.get("birth_date", "")),
+            str(user.get("birth_time", "")),
+            str(user.get("birth_place", "")),
+            str(user.get("gender", "")),
+            str(user.get("bio", "")),
+            str(user.get("interests", "")),
+            str(user.get("goals", "")),
+            str(user.get("relationship_status", "")),
+        ]
+        return self._hash("|".join(parts))
+
+    # ============================================================
     # ГОРОСКОП
     # ============================================================
     async def generate_horoscope(self) -> Optional[str]:
-        """Генерирует общий гороскоп на день (один для всех)."""
         today = datetime.now().strftime("%d.%m.%Y")
-
         system_prompt = (
             "Ты — профессиональный астролог. Составь красивый астрологический гороскоп на сегодня.\n"
             "Требования:\n"
             "- НЕ используй markdown (**, __, `)\n"
             "- Используй эмодзи в начале блоков\n"
             "- Разделяй блоки пустой строкой\n"
-            "- НЕ упоминай конкретные знаки зодиака (гороскоп общий)\n"
-            "- НЕ упоминай числа и точные даты\n"
-            "- Тон: дружелюбный, тёплый, поддерживающий\n"
+            "- НЕ упоминай конкретные знаки зодиака\n"
+            "- НЕ упоминай числа и даты\n"
+            "- Тон: дружелюбный, тёплый\n"
         )
-
         user_prompt = f"""Составь астрологический гороскоп на {today}.
 
-Структура (соблюдай блоки):
-
+Структура:
 🌅 ОБЩИЙ ПРОГНОЗ
-[3-4 предложения об энергетике дня]
+[3-4 предложения]
 
 💫 ПЛАНЕТАРНЫЕ ВЛИЯНИЯ
 [2-3 предложения]
@@ -176,7 +397,7 @@ class N1NService:
 💼 КАРЬЕРА И ФИНАНСЫ
 [2-3 предложения]
 
-🌿 ЗДОРОВЬЕ И ЭНЕРГИЯ
+🌿 ЗДОРОВЬЕ
 [2-3 предложения]
 
 💡 СОВЕТ ДНЯ
@@ -185,32 +406,27 @@ class N1NService:
 ✨ АСТРОЛОГИЧЕСКИЙ ФАКТ
 [1 предложение]
 
-Помни: без markdown, с эмодзи."""
-
+Без markdown, с эмодзи."""
         answer = await self._query_ai(system_prompt, user_prompt)
-        if not answer:
-            return None
-        return self._clean_response(answer)
+        return self._clean_response(answer) if answer else None
 
     # ============================================================
     # СОВМЕСТИМОСТЬ
     # ============================================================
     async def generate_compatibility(self, sign1: str, sign2: str) -> Optional[Dict[str, Any]]:
-        """Генерирует совместимость пары знаков."""
         system_prompt = (
-            "Ты — профессиональный астролог. Проанализируй совместимость двух знаков зодиака.\n"
+            "Ты — профессиональный астролог. Проанализируй совместимость знаков.\n"
             "Требования:\n"
             "- НЕ используй markdown\n"
             "- Используй эмодзи\n"
             "- Тон: дружелюбный, поддерживающий\n"
         )
+        user_prompt = f"""Совместимость: {sign1} и {sign2}.
 
-        user_prompt = f"""Проанализируй совместимость: {sign1} и {sign2}.
+Верни СТРОГО:
 
-Верни СТРОГО в таком формате:
-
-SCORE: [число от 0 до 100]
-LEVEL: [одно из: Идеальная совместимость / Отличная совместимость / Хорошая совместимость / Средняя совместимость / Сложная совместимость]
+SCORE: [число 0-100]
+LEVEL: [Идеальная / Отличная / Хорошая / Средняя / Сложная совместимость]
 TEXT:
 💕 АНАЛИЗ СОВМЕСТИМОСТИ
 
@@ -231,18 +447,14 @@ TEXT:
 
 🔮 Помните: астрология — это руководство, а не приговор.
 
-Не пиши ничего кроме указанного формата."""
-
+Ничего кроме формата."""
         answer = await self._query_ai(system_prompt, user_prompt)
         if not answer:
             return None
-
-        # Парсим ответ
         try:
             score = 75
             level = "Хорошая совместимость"
             text = answer
-
             for line in answer.split("\n"):
                 if line.startswith("SCORE:"):
                     try:
@@ -254,14 +466,13 @@ TEXT:
                 elif line.startswith("TEXT:"):
                     text = answer.split("TEXT:", 1)[1].strip()
                     break
-
             return {
                 "score": score,
                 "level": level,
                 "text": self._clean_response(text),
             }
         except Exception as e:
-            logger.error(f"Ошибка парсинга совместимости: {e}")
+            logger.error(f"Парсинг совместимости: {e}")
             return {
                 "score": 75,
                 "level": "Совместимость",
@@ -272,25 +483,20 @@ TEXT:
     # НАТАЛЬНАЯ КАРТА
     # ============================================================
     async def generate_natal_interpretation(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Генерирует AI-интерпретацию натальной карты."""
         info = chart_data.get("birth_info", {})
         planets = chart_data.get("planets", [])
-
         planets_text = "\n".join([
             f"- {p.get('name', '?')} в {p.get('sign', '?')} ({p.get('house', '?')} дом)"
             for p in planets
         ])
-
         system_prompt = (
             "Ты — профессиональный астролог. Составь интерпретацию натальной карты.\n"
             "Требования:\n"
-            "- 5-7 предложений\n"
-            "- На основе РЕАЛЬНЫХ позиций планет (не выдумывай)\n"
+            "- 8-10 предложений\n"
+            "- На основе РЕАЛЬНЫХ позиций планет\n"
             "- Без markdown\n"
             "- Тёплый, поддерживающий тон\n"
-            "- Обращайся по имени\n"
         )
-
         user_prompt = f"""Пользователь: {info.get('name', 'Пользователь')}
 Дата: {info.get('date', '?')} в {info.get('time', '?')}
 Место: {info.get('place', '?')}
@@ -302,248 +508,29 @@ TEXT:
 Планеты:
 {planets_text}
 
-Составь персональную интерпретацию натальной карты."""
-
-        answer = await self._query_ai(system_prompt, user_prompt)
-        if not answer:
-            return None
-        return self._clean_response(answer)
+Составь персональную интерпретацию."""
+        answer = await self._query_ai(system_prompt, user_prompt, max_tokens=1200)
+        return self._clean_response(answer) if answer else None
 
     # ============================================================
-    # ИЗВЛЕЧЕНИЕ ФАКТОВ
+    # FALLBACK
     # ============================================================
-    async def extract_user_facts(self, question: str, answer: str) -> List[str]:
-        """
-        Извлекает факты о пользователе из диалога.
-        Возвращает список строк (максимум 3).
-        """
-        system_prompt = (
-            "Ты — анализатор. Извлеки ТОЛЬКО те факты, которые ПОЛЬЗОВАТЕЛЬ утверждал о себе.\n"
-            "НЕ включай:\n"
-            "- вопросы пользователя\n"
-            "- предположения AI\n"
-            "- общие фразы\n\n"
-            "Формат ответа: JSON-массив строк. Пример: [\"Работает в IT\", \"Любит кофе\"]\n"
-            "Если фактов нет — верни [].\n"
-            "Максимум 3 факта. Каждый до 100 символов."
-        )
-
-        user_prompt = f"""Диалог:
-Пользователь: {question}
-AI: {answer}
-
-Извлеки факты о пользователе."""
-
-        raw = await self._query_ai(system_prompt, user_prompt, max_tokens=200)
-        if not raw:
-            return []
-
-        # Ищем JSON-массив в ответе
-        try:
-            match = re.search(r"\[.*?\]", raw, re.DOTALL)
-            if match:
-                facts = json.loads(match.group())
-                if isinstance(facts, list):
-                    return [str(f)[:100] for f in facts[:3]]
-        except Exception as e:
-            logger.debug(f"Ошибка парсинга фактов: {e}")
-
-        return []
-
-    # ============================================================
-    # ВНУТРЕННИЕ
-    # ============================================================
-    def _detect_question_type(self, question: str) -> str:
-        """Определяет тип вопроса: личный или общий."""
-        q_lower = question.lower()
-        words = re.findall(r"\b\w+\b", q_lower)
-
-        personal_pronouns = {
-            "я", "мне", "меня", "мой", "моя", "мои", "моё", "моего", "моей",
-            "мной", "мною", "себя", "себе", "собой", "меня", "нам", "нас",
-            "наш", "наша", "наши",
-        }
-
-        if any(w in personal_pronouns for w in words):
-            return "personal"
-        return "general"
-
-    def _get_profile_hash(self, user: Dict[str, Any]) -> str:
-        """Хеш профиля для ключа кэша."""
-        parts = [
-            str(user.get("birth_date", "")),
-            str(user.get("birth_time", "")),
-            str(user.get("birth_place", "")),
-            str(user.get("gender", "")),
-            str(user.get("bio", "")),
-            str(user.get("interests", "")),
-            str(user.get("goals", "")),
-            str(user.get("relationship_status", "")),
-        ]
-        return self._hash("|".join(parts))
-
-    def _hash(self, text: str) -> str:
-        """MD5-хеш."""
-        import hashlib
-        return hashlib.md5(text.encode("utf-8")).hexdigest()[:16]
-
-    async def _build_context(self, user_id: int, user: Dict[str, Any]) -> str:
-        """Строит контекст из профиля и заметок."""
-        parts = []
-
-        if user.get("first_name"):
-            parts.append(f"Имя: {user['first_name']}")
-
-        if user.get("birth_date"):
-            zodiac = ""
-            try:
-                from astrology_calculator import AstrologyCalculator
-                birth_date = datetime.strptime(user["birth_date"], "%Y-%m-%d")
-                zodiac = AstrologyCalculator.get_zodiac_sign(birth_date)
-            except Exception:
-                pass
-            birth_line = f"Дата рождения: {user['birth_date']}"
-            if user.get("birth_time"):
-                birth_line += f" в {user['birth_time']}"
-            if user.get("birth_place"):
-                birth_line += f", {user['birth_place']}"
-            if zodiac:
-                birth_line += f" (знак: {zodiac})"
-            parts.append(birth_line)
-
-        if user.get("gender"):
-            parts.append(f"Пол: {user['gender']}")
-        if user.get("bio"):
-            parts.append(f"О себе: {user['bio']}")
-        if user.get("interests"):
-            parts.append(f"Интересы: {user['interests']}")
-        if user.get("goals"):
-            parts.append(f"Цели: {user['goals']}")
-        if user.get("relationship_status"):
-            parts.append(f"Статус отношений: {user['relationship_status']}")
-
-        # Заметки AI
-        notes = await get_user_notes(user_id)
-        if notes:
-            parts.append("Важные факты о пользователе:")
-            for n in notes[:10]:
-                parts.append(f"  • {n['note']}")
-
-        if not parts:
-            return ""
-
-        return "ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n" + "\n".join(parts)
-
-    def _get_system_prompt(self, qtype: str) -> str:
-        base = (
-            "Ты — профессиональный астролог с 20-летним опытом.\n"
-            "Требования:\n"
-            "- НЕ используй markdown (**, __, `)\n"
-            "- Используй эмодзи для оформления\n"
-            "- Тон: тёплый, дружелюбный, поддерживающий\n"
-            "- Отвечай на русском\n"
-            "- НЕ упоминай конкретные числа месяца\n"
-        )
-        if qtype == "personal":
-            return base + (
-                "\nУчитывай ИНФОРМАЦИЮ О ПОЛЬЗОВАТЕЛЕ, которую получишь ниже.\n"
-                "Отвечай персонально, обращайся по имени, учитывай цели и интересы.\n"
-                "4-6 предложений, но по делу."
-            )
-        return base + "\nОтвечай информативно, 4-6 предложений."
-
-    def _build_user_prompt(self, question: str, context: str) -> str:
-        if context:
-            return f"{context}\n\nВопрос пользователя: {question}"
-        return f"Вопрос пользователя: {question}"
-
-    async def _query_ai(self, system_prompt: str, user_prompt: str,
-                        max_tokens: int = 800) -> Optional[str]:
-        """Отправляет запрос к n1n.ai."""
-        if not self.api_key:
-            logger.error("❌ N1N_API_KEY не установлен")
-            return None
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        data = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.8,
-            "max_tokens": max_tokens,
-        }
-
-        for model_try in self.fallback_models:
-            data["model"] = model_try
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=data,
-                    )
-                    if response.status_code == 200:
-                        result = response.json()
-                        content = result["choices"][0]["message"]["content"]
-                        return content
-                    else:
-                        logger.warning(f"❌ AI {model_try} {response.status_code}: {response.text[:200]}")
-            except httpx.TimeoutException:
-                logger.warning(f"⏰ Таймаут {model_try}")
-            except Exception as e:
-                logger.warning(f"❌ Ошибка {model_try}: {e}")
-
-        return None
-
-    def _clean_response(self, text: str) -> str:
-        """Убирает markdown из ответа AI."""
-        if not text:
-            return text
-        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)  # **bold**
-        text = re.sub(r"__(.+?)__", r"\1", text)       # __italic__
-        text = re.sub(r"`(.+?)`", r"\1", text)         # `code`
-        text = re.sub(r"\*(.+?)\*", r"\1", text)       # *italic*
-        text = re.sub(r"#{1,6}\s*", "", text)          # ## headers
-        text = re.sub(r"\n{3,}", "\n\n", text)         # лишние пустые строки
-        return text.strip()
-
     def _get_fallback_answer(self, question: str) -> str:
-        """Локальный ответ, если AI недоступен."""
         q_lower = question.lower()
-
         if any(w in q_lower for w in ["совместимость", "отношения", "любовь"]):
-            return (
-                "💕 Совместимость — сложная тема.\n\n"
-                "Для точного анализа укажите знаки партнёров.\n\n"
-                "Попробуйте переформулировать вопрос или попробуйте позже."
-            )
+            return "💕 Совместимость — сложная тема. Попробуйте позже."
         if any(w in q_lower for w in ["карьера", "работа", "деньги"]):
-            return (
-                "💼 Карьерный вопрос — важный.\n\n"
-                "Сейчас AI временно недоступен.\n\n"
-                "Попробуйте позже — я обязательно помогу."
-            )
+            return "💼 Карьерный вопрос важен. AI временно недоступен, попробуйте позже."
         if any(w in q_lower for w in ["здоровье"]):
-            return (
-                "🌿 О здоровье — важно.\n\n"
-                "AI временно недоступен, попробуйте позже."
-            )
-
+            return "🌿 О здоровье важно. AI временно недоступен."
         fallbacks = [
-            "🌟 Сейчас звёзды дают мало сигналов — попробуйте задать вопрос позже.",
+            "🌟 Сейчас звёзды дают мало сигналов — попробуйте позже.",
             "🔮 AI-астролог временно занят. Попробуйте через пару минут.",
-            "✨ Вселенная готовит для вас ответ. Попробуйте ещё раз.",
+            "✨ Вселенная готовит ответ. Попробуйте ещё раз.",
         ]
         return random.choice(fallbacks)
 
     async def _notify_admins_error(self, question: str, error: str):
-        """Уведомляет админов об ошибке AI."""
         if not ADMINS:
             return
         try:
@@ -552,9 +539,7 @@ AI: {answer}
                 try:
                     await bot.send_message(
                         admin_id,
-                        f"⚠️ AI-ошибка\n\n"
-                        f"Вопрос: {question[:100]}\n"
-                        f"Ошибка: {error[:200]}"
+                        f"⚠️ AI-ошибка\n\nВопрос: {question[:100]}\nОшибка: {error[:200]}"
                     )
                 except Exception:
                     pass
@@ -562,5 +547,4 @@ AI: {answer}
             pass
 
 
-# Создаём экземпляр
 ai_service = N1NService()

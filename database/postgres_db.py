@@ -624,3 +624,168 @@ async def get_natal_cache(cache_key: str):
 
 async def set_natal_cache(cache_key: str, text: str):
     await set_setting(f"natal_{cache_key}", {"text": text})
+
+
+# ============================================================
+# ОЧИСТКА КЭША AI
+# ============================================================
+async def clean_time_dependent_cache():
+    """Удаляет все временные ответы (с _YYYY-MM-DD в ключе)."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("""
+            DELETE FROM ai_history
+            WHERE request_key ~ '_[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        """)
+        return result
+
+
+async def clean_old_ai_history_v2(days: int = 14):
+    """Удаляет записи старше N дней."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            f"DELETE FROM ai_history WHERE created_at < NOW() - INTERVAL '{days} days'"
+        )
+        return result
+
+
+async def get_ai_cache_stats() -> dict:
+    """Статистика кэша."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM ai_history") or 0
+        time_dep = await conn.fetchval("""
+            SELECT COUNT(*) FROM ai_history
+            WHERE request_key ~ '_[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        """) or 0
+        personal = await conn.fetchval("""
+            SELECT COUNT(*) FROM ai_history WHERE request_key LIKE 'personal_%'
+        """) or 0
+        general = await conn.fetchval("""
+            SELECT COUNT(*) FROM ai_history WHERE request_key LIKE 'general_%'
+        """) or 0
+    return {
+        "total": total,
+        "time_dependent": time_dep,
+        "permanent": total - time_dep,
+        "personal": personal,
+        "general": general,
+    }
+
+
+# ============================================================
+# НАПОМИНАНИЯ
+# ============================================================
+async def get_reminder_settings() -> dict:
+    """Настройки напоминаний."""
+    default = {"enabled": True, "inactive_months": 1}
+    data = await get_setting("reminder_settings", default)
+    if not isinstance(data, dict):
+        return default
+    if "enabled" not in data:
+        data["enabled"] = True
+    if "inactive_months" not in data:
+        data["inactive_months"] = 1
+    return data
+
+
+async def set_reminder_settings(enabled: bool, inactive_months: int = 1):
+    await set_setting("reminder_settings", {
+        "enabled": enabled,
+        "inactive_months": inactive_months,
+    })
+
+
+async def get_users_for_reminder(limit: int = 100) -> list:
+    """
+    Возвращает пользователей, которым нужно напомнить о профиле.
+    Условия:
+    - profile_completed = FALSE
+    - последнее напоминание > 7 дней назад (или не было)
+    - последняя активность < N месяцев назад
+    """
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT u.user_id
+            FROM users u
+            LEFT JOIN settings s ON s.key = 'reminder_' || u.user_id::text
+            WHERE
+                u.profile_completed = FALSE
+                AND (
+                    s.value IS NULL
+                    OR (s.value::jsonb->>'last_reminder')::timestamp < NOW() - INTERVAL '7 days'
+                )
+                AND u.created_at > NOW() - INTERVAL '1 month' * $1
+            ORDER BY u.created_at DESC
+            LIMIT $2
+        """, 1, limit)
+        return [dict(r) for r in rows]
+
+
+async def set_last_reminder(user_id: int):
+    """Записывает, когда последний раз отправляли напоминание."""
+    from datetime import datetime as dt
+    key = f"reminder_{user_id}"
+    await set_setting(key, {
+        "last_reminder": dt.now().isoformat(),
+    })
+
+
+async def should_send_reminder(user_id: int) -> bool:
+    """Проверяет, можно ли отправить напоминание."""
+    key = f"reminder_{user_id}"
+    data = await get_setting(key)
+    if not data or not isinstance(data, dict):
+        return True
+    last = data.get("last_reminder")
+    if not last:
+        return True
+    try:
+        from datetime import datetime as dt, timedelta
+        last_dt = dt.fromisoformat(last)
+        return (dt.now() - last_dt) > timedelta(days=7)
+    except Exception:
+        return True
+
+
+# ============================================================
+# АВТООЧИСТКА КЭША
+# ============================================================
+async def auto_clean_cache():
+    """
+    Автоматическая очистка кэша:
+    - Временные > 7 дней
+    - Постоянные > 90 дней
+    """
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        # Временные (с датой в ключе)
+        r1 = await conn.execute("""
+            DELETE FROM ai_history
+            WHERE request_key ~ '_[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            AND created_at < NOW() - INTERVAL '7 days'
+        """)
+        # Постоянные (без даты)
+        r2 = await conn.execute("""
+            DELETE FROM ai_history
+            WHERE request_key !~ '_[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            AND created_at < NOW() - INTERVAL '90 days'
+        """)
+    logger.info(f"🧹 Автоочистка кэша: временные={r1}, постоянные={r2}")
+    return {"temporary": r1, "permanent": r2}
+
+
+async def get_cache_cleanup_settings() -> dict:
+    default = {"enabled": True}
+    data = await get_setting("cache_cleanup", default)
+    if not isinstance(data, dict):
+        return default
+    if "enabled" not in data:
+        data["enabled"] = True
+    return data
+
+
+async def set_cache_cleanup_settings(enabled: bool):
+    await set_setting("cache_cleanup", {"enabled": enabled})
