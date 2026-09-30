@@ -211,10 +211,24 @@ async def create_user(user_id: int, username: str = "", first_name: str = ""):
 
 
 async def get_user(user_id: int):
+    # Кэш
+    try:
+        from services.cache import user_cache
+        cached = user_cache.get(f"user_{user_id}")
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-        return dict(row) if row else None
+        result = dict(row) if row else None
+    try:
+        from services.cache import user_cache
+        user_cache.set(f"user_{user_id}", result, ttl=20)
+    except Exception:
+        pass
+    return result
 
 
 async def update_user_field(user_id: int, field: str, value):
@@ -233,6 +247,8 @@ async def update_user_field(user_id: int, field: str, value):
             f"UPDATE users SET {field} = $2 WHERE user_id = $1",
             user_id, value
         )
+    # Инвалидируем кэш
+    invalidate_user_cache(user_id)
 
 
 async def update_birth_data(user_id: int, birth_date: str, birth_time: str, birth_place: str):
@@ -1016,8 +1032,22 @@ async def is_admin(user_id: int) -> bool:
     from config import ADMINS as MAIN_ADMINS
     if user_id in MAIN_ADMINS:
         return True
+    # Кэш
+    try:
+        from services.cache import admin_cache
+        cached = admin_cache.get(f"adm_{user_id}")
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
     extra = await get_extra_admins()
-    return user_id in extra
+    result = user_id in extra
+    try:
+        from services.cache import admin_cache
+        admin_cache.set(f"adm_{user_id}", result, ttl=60)
+    except Exception:
+        pass
+    return result
 
 
 async def is_main_admin(user_id: int) -> bool:
@@ -1061,3 +1091,52 @@ async def clear_last_menu(user_id: int):
             )
     except Exception as e:
         logger.warning(f"clear_last_menu: {e}")
+
+
+# ============================================================
+# LAST MENUS (v2) — 2 ID: факт + inline
+# ============================================================
+async def set_last_menus(user_id: int, chat_id: int, fact_id: int = None, inline_id: int = None):
+    """Сохраняет ID последних меню-сообщений."""
+    key = f"last_menus_{user_id}"
+    current = await get_setting(key, {}) or {}
+    if fact_id is not None:
+        current["fact_id"] = fact_id
+    if inline_id is not None:
+        current["inline_id"] = inline_id
+    current["chat_id"] = chat_id
+    await set_setting(key, current)
+
+
+async def get_last_menus(user_id: int):
+    """Возвращает dict с chat_id, fact_id, inline_id."""
+    key = f"last_menus_{user_id}"
+    data = await get_setting(key, {})
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+async def clear_last_menus(user_id: int):
+    """Очищает записи."""
+    key = f"last_menus_{user_id}"
+    try:
+        pool = await db.create_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM settings WHERE key = $1", key)
+    except Exception as e:
+        logger.warning(f"clear_last_menus: {e}")
+
+
+# ============================================================
+# ИНВАЛИДАЦИЯ КЭША
+# ============================================================
+def invalidate_user_cache(user_id: int):
+    """Сбрасывает кэш пользователя (при обновлении профиля)."""
+    try:
+        from services.cache import user_cache, paid_cache, admin_cache
+        user_cache.delete(f"user_{user_id}")
+        paid_cache.delete(f"paid_{user_id}")
+        admin_cache.delete(f"adm_{user_id}")
+    except Exception:
+        pass

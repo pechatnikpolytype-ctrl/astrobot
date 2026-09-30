@@ -1,4 +1,6 @@
 import logging
+import random
+import asyncio
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -6,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 
 from keyboards.main import main_menu_keyboard, main_reply_keyboard
 from database.postgres_db import (
-    is_paid, is_admin, get_last_menu, set_last_menu, clear_last_menu,
+    is_paid, is_admin, get_last_menus, set_last_menus,
 )
 from config import FREE_MODE
 
@@ -14,128 +16,225 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-async def _delete_previous_menu(bot: Bot, user_id: int, chat_id: int):
-    """Удаляет предыдущее меню-сообщение пользователя."""
+# ============================================================
+# КЭШИ (в памяти)
+# ============================================================
+# Кэш последних меню: {user_id: {"chat_id": X, "fact_id": Y, "inline_id": Z}}
+_last_menus_cache: dict = {}
+
+# Локи для защиты от двойного нажатия: {user_id: asyncio.Lock}
+_user_locks: dict = {}
+
+
+def _get_lock(user_id: int) -> asyncio.Lock:
+    if user_id not in _user_locks:
+        _user_locks[user_id] = asyncio.Lock()
+    return _user_locks[user_id]
+
+
+# ============================================================
+# ФАКТЫ
+# ============================================================
+MENU_FACTS = [
+    "🔮 Астрология — это язык звёзд. Каждая планета говорит с вами.",
+    "✨ Луна меняет знак каждые 2-3 дня. Настроение — тоже.",
+    "🌟 Ваш знак зодиака — только начало. Вселенная говорит символами.",
+    "💫 Солнце, Луна и планеты — ваши космические спутники.",
+    "🌙 Полнолуние — время отпустить старое и впустить новое.",
+    "🪐 Сатурн учит терпению. Юпитер дарит удачу.",
+    "⭐ Асцендент — ваша визитная карточка для мира.",
+    "🌞 Стихии — 4 языка, на которых говорит ваша душа.",
+    "🔭 Астрология старше пирамид. Ей больше 4000 лет.",
+    "✨ Меркурий управляет общением. В ретроград — будьте внимательны.",
+    "💫 Венера — планета любви. Она знает ваши желания.",
+    "🌙 Луна — ваш внутренний мир. Слушайте её.",
+    "🌟 Марс даёт энергию. Используйте её мудро.",
+    "⭐ 12 домов — 12 сфер жизни.",
+    "🪐 Плутон — планета трансформации. Перемены — это рост.",
+    "🌞 Солнце в карте — ваша суть. Луна — ваши чувства.",
+    "💫 Кометы приносят перемены. Следите за знаками.",
+    "🔮 Интуиция — ваш личный астролог. Доверяйте ей.",
+    "✨ Звёзды не решают за вас. Они лишь показывают путь.",
+    "🌙 Новолуние — лучшее время для новых начинаний.",
+    "🌟 Юпитер в вашем доме — там ждёт удача.",
+    "⭐ Меркурий, Венера, Марс — три ключа к действию.",
+    "🪐 Сатурн не наказывает — он учит.",
+    "💫 Лунные узлы показывают путь души.",
+    "🌞 Стихия Огня — страсть. Земли — стабильность. Воздуха — идеи. Воды — чувства.",
+    "🔮 Ретроградный Меркурий — время пересмотреть, а не начинать.",
+    "✨ Каждая планета в вашей карте — часть пазла.",
+    "🌙 Луна в Раке — время заботы. В Овне — время действий.",
+    "🌟 Астрология — не магия. Это язык Вселенной.",
+    "⭐ Ваша натальная карта уникальна. Как отпечаток пальца.",
+]
+
+
+def get_menu_fact() -> str:
+    return random.choice(MENU_FACTS)
+
+
+# ============================================================
+# УДАЛЕНИЕ МЕНЮ
+# ============================================================
+async def _delete_previous_menus(bot: Bot, user_id: int):
+    """Удаляет предыдущие меню (из кэша или БД)."""
+    if not bot:
+        return
     try:
-        prev = await get_last_menu(user_id)
-        if prev:
-            prev_chat_id, prev_message_id = prev
-            try:
-                await bot.delete_message(chat_id=prev_chat_id, message_id=prev_message_id)
-            except Exception as e:
-                logger.debug(f"Не удалось удалить меню {prev_message_id}: {e}")
+        data = _last_menus_cache.get(user_id)
+        if not data:
+            data = await get_last_menus(user_id) or {}
+            _last_menus_cache[user_id] = data
+
+        chat_id = data.get("chat_id")
+        if not chat_id:
+            return
+
+        for key in ("fact_id", "inline_id"):
+            mid = data.get(key)
+            if mid:
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=mid)
+                except Exception as e:
+                    logger.debug(f"Не удалить {mid}: {e}")
+
+        # Очищаем кэш (удалённые ID больше не нужны)
+        _last_menus_cache[user_id] = {"chat_id": chat_id}
     except Exception as e:
-        logger.debug(f"delete_previous_menu: {e}")
+        logger.debug(f"_delete_previous_menus: {e}")
 
 
+async def _save_menus_bg(user_id: int, chat_id: int, fact_id: int, inline_id: int):
+    """Сохраняет ID меню в БД в фоне."""
+    try:
+        await set_last_menus(user_id, chat_id, fact_id=fact_id, inline_id=inline_id)
+    except Exception as e:
+        logger.debug(f"_save_menus_bg: {e}")
+
+
+# ============================================================
+# ПОКАЗ ГЛАВНОГО МЕНЮ
+# ============================================================
+async def _show_main_menu(message: Message, bot: Bot = None):
+    """Быстрый показ главного меню."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    try:
+        paid, admin = await asyncio.gather(
+            is_paid(user_id),
+            is_admin(user_id),
+        )
+    except Exception:
+        paid, admin = False, False
+
+    fact_text = get_menu_fact()
+
+    # Параллельно: факт + inline-меню
+    fact_msg = await message.answer(fact_text, reply_markup=main_reply_keyboard())
+
+    if not paid and not admin and not FREE_MODE:
+        from keyboards.main import payment_keyboard
+        inline_msg = await message.answer(
+            "🔒 Подписка не активна.\n\nВыберите тариф:",
+            reply_markup=await payment_keyboard(),
+        )
+    else:
+        inline_msg = await message.answer(
+            "🏠 Главное меню:",
+            reply_markup=main_menu_keyboard(user_id),
+        )
+
+    # Сохраняем в кэш (мгновенно)
+    _last_menus_cache[user_id] = {
+        "chat_id": chat_id,
+        "fact_id": fact_msg.message_id,
+        "inline_id": inline_msg.message_id,
+    }
+
+    # Сохраняем в БД в фоне (не ждём)
+    asyncio.create_task(_save_menus_bg(
+        user_id, chat_id, fact_msg.message_id, inline_msg.message_id
+    ))
+
+
+# ============================================================
+# ОБРАБОТЧИКИ С ЗАЩИТОЙ ОТ ДВОЙНОГО НАЖАТИЯ
+# ============================================================
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext, bot: Bot):
-    """Команда /menu — быстрый возврат в главное меню."""
-    await state.clear()
-    # Удаляем сообщение /menu
-    try:
-        await message.delete()
-    except Exception:
-        pass
-    # Удаляем предыдущее меню
-    await _delete_previous_menu(bot, message.from_user.id, message.chat.id)
-    await _show_main_menu(message)
+    user_id = message.from_user.id
+    lock = _get_lock(user_id)
+
+    if lock.locked():
+        # Уже обрабатывается — игнорируем
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    async with lock:
+        await state.clear()
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await _delete_previous_menus(bot, user_id)
+        await _show_main_menu(message, bot)
 
 
 @router.message(F.text == "🏠 Меню")
 async def reply_menu(message: Message, state: FSMContext, bot: Bot):
-    """Reply-кнопка '🏠 Меню'."""
-    await state.clear()
-    # Удаляем сообщение с reply-кнопкой (само "🏠 Меню")
+    user_id = message.from_user.id
+    lock = _get_lock(user_id)
+
+    # Если уже обрабатывается — удалить сообщение и выйти
     try:
         await message.delete()
     except Exception:
         pass
-    # Удаляем предыдущее меню
-    await _delete_previous_menu(bot, message.from_user.id, message.chat.id)
-    await _show_main_menu(message)
 
-
-async def _show_main_menu(message: Message):
-    """Показ главного меню с автоудалением старого."""
-    user_id = message.from_user.id
-
-    try:
-        paid = await is_paid(user_id)
-        admin = await is_admin(user_id)
-    except Exception:
-        paid = False
-        admin = False
-
-    if not paid and not admin and not FREE_MODE:
-        from keyboards.main import payment_keyboard
-        msg = await message.answer(
-            "🔒 Подписка не активна.\n\nВыберите тариф:",
-            reply_markup=await payment_keyboard()
-        )
-        # Сохраняем ID меню для следующего удаления
-        await set_last_menu(user_id, msg.message_id, msg.chat.id)
-        # Reply-клавиатура
-        r = await message.answer(
-            "Меню всегда внизу 👇",
-            reply_markup=main_reply_keyboard()
-        )
+    if lock.locked():
         return
 
-    msg = await message.answer(
-        "🏠 Главное меню:",
-        reply_markup=main_menu_keyboard(user_id)
-    )
-    # Сохраняем ID меню
-    await set_last_menu(user_id, msg.message_id, msg.chat.id)
-
-    # Reply-клавиатура — отдельным сообщением
-    r = await message.answer(
-        "Меню всегда внизу 👇",
-        reply_markup=main_reply_keyboard()
-    )
+    async with lock:
+        await state.clear()
+        await _delete_previous_menus(bot, user_id)
+        await _show_main_menu(message, bot)
 
 
-# ============================================================
-# ❌ CANCEL — умный возврат + автоудаление
-# ============================================================
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext, bot: Bot):
-    """Умный /cancel."""
-    current_state = await state.get_state()
     user_id = message.from_user.id
+    lock = _get_lock(user_id)
 
-    # Удаляем сообщение /cancel
     try:
         await message.delete()
     except Exception:
         pass
 
-    if current_state:
-        await state.clear()
-        info = await message.answer("✅ Действие отменено.")
-    else:
-        info = await message.answer("Нечего отменять.")
+    if lock.locked():
+        return
 
-    # Удаляем предыдущее меню
-    await _delete_previous_menu(bot, user_id, message.chat.id)
+    async with lock:
+        current_state = await state.get_state()
+        if current_state:
+            await state.clear()
+            await message.answer("✅ Действие отменено.")
+        else:
+            await message.answer("Нечего отменять.")
 
-    # Показываем главное меню
-    await _show_main_menu(message)
+        await _delete_previous_menus(bot, user_id)
+        await _show_main_menu(message, bot)
 
 
 # ============================================================
-# ХЕЛПЕР: сохранить ID меню (используется из других handlers)
+# ХЕЛПЕР для start.py
 # ============================================================
-async def save_menu_id(message, user_id: int):
-    """Сохраняет ID меню-сообщения. Для использования из других handlers."""
-    await set_last_menu(user_id, message.message_id, message.chat.id)
-
-
-async def delete_old_and_send_new_menu(bot, user_id: int, chat_id: int, message_text: str, reply_markup):
-    """
-    Удаляет старое меню и отправляет новое.
-    Возвращает отправленное сообщение.
-    """
-    await _delete_previous_menu(bot, user_id, chat_id)
-    return None  # вызывающий сам отправляет
+async def show_main_menu_from_start(message: Message, bot: Bot = None):
+    """Обёртка для /start — с блокировкой."""
+    user_id = message.from_user.id
+    lock = _get_lock(user_id)
+    async with lock:
+        await _show_main_menu(message, bot)
