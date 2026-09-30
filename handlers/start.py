@@ -1,24 +1,81 @@
 from aiogram import Router, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, CallbackQuery
 from database.postgres_db import (
     create_user, is_paid, has_trial_used,
-    set_trial_used, set_subscription, get_trial
+    set_trial_used, set_subscription, get_trial,
+    get_user, add_referral, get_referral_settings,
+    count_user_referrals_with_bonus, mark_referral_bonus_paid,
 )
 from keyboards.main import welcome_keyboard, main_menu_keyboard, payment_keyboard
 from config import ADMINS, FREE_MODE
+import logging
 
+logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def _process_referral(new_user_id: int, referrer_id: int):
+    """Обрабатывает реферальную ссылку."""
+    if new_user_id == referrer_id:
+        return
+
+    settings = await get_referral_settings()
+    if not settings.get("enabled", True):
+        return
+
+    max_bonuses = settings.get("max_bonuses", 10)
+    if max_bonuses > 0:
+        count = await count_user_referrals_with_bonus(referrer_id)
+        if count >= max_bonuses:
+            logger.info(f"Реферер {referrer_id} достиг лимита {max_bonuses}")
+            return
+
+    bonus_days = settings.get("bonus_days", 3)
+    added = await add_referral(referrer_id, new_user_id, bonus_days)
+    if not added:
+        return
+
+    # Бонус сразу
+    await set_subscription(new_user_id, bonus_days)
+    await set_subscription(referrer_id, bonus_days)
+    await mark_referral_bonus_paid(new_user_id)
+
+    logger.info(f"✅ Реферал: {referrer_id} пригласил {new_user_id}")
+
+    # Уведомляем реферера
+    try:
+        from loader import bot
+        await bot.send_message(
+            referrer_id,
+            f"🎉 По вашей ссылке зарегистрировался новый пользователь!\n\n"
+            f"Вам начислено {bonus_days} дней Премиум."
+        )
+    except Exception:
+        pass
+
+
 @router.message(Command("start"))
-async def start_handler(message: Message):
+async def start_handler(message: Message, command: CommandObject = None):
     user_id = message.from_user.id
     username = message.from_user.username or ""
     first_name = message.from_user.first_name or ""
+
+    # Реферальная ссылка — обрабатываем ДО создания юзера
+    if command and command.args and command.args.startswith("ref_"):
+        try:
+            referrer_id = int(command.args.replace("ref_", ""))
+            existing = await get_user(user_id)
+            if not existing:
+                await create_user(user_id, username, first_name)
+                await _process_referral(user_id, referrer_id)
+            else:
+                logger.info(f"Реферал не засчитан: {user_id} уже существует")
+        except Exception as e:
+            logger.warning(f"Ошибка реферальной ссылки: {e}")
+
     await create_user(user_id, username, first_name)
 
-    # Режим "всё бесплатно"
     if FREE_MODE:
         text = f"🌟 Добро пожаловать в AstroBot v2 PRO, {first_name}!"
         await message.answer(text, reply_markup=await welcome_keyboard())
@@ -28,28 +85,24 @@ async def start_handler(message: Message):
     paid = await is_paid(user_id)
     trial = await get_trial()
 
-    # Если триал выключен админом
     if not trial.get("enabled", True):
         if not paid:
             await message.answer(
-                "🔒 Оформите подписку для доступа к функциям бота:",
+                "🔒 Оформите подписку для доступа:",
                 reply_markup=await payment_keyboard()
             )
             return
-        # paid — пускаем дальше
         text = f"🌟 Добро пожаловать, {first_name}!"
         await message.answer(text, reply_markup=await welcome_keyboard())
         return
 
-    # Триал включён
     trial_days = trial.get("days", 1)
 
     if not trial_used and not paid:
         await set_subscription(user_id, trial_days)
         await set_trial_used(user_id)
         await message.answer(
-            f"🎁 Вам активирован пробный период на {trial_days} дн.!\n"
-            f"Пользуйтесь всеми функциями бота бесплатно."
+            f"🎁 Вам активирован пробный период на {trial_days} дн.!"
         )
     elif not paid and trial_used:
         await message.answer(
@@ -65,8 +118,9 @@ async def start_handler(message: Message):
 async def check_status(callback: CallbackQuery):
     user_id = callback.from_user.id
     is_paid_user = await is_paid(user_id)
+    admin_flag = user_id in ADMINS
 
-    if is_paid_user or user_id in ADMINS:
+    if is_paid_user or admin_flag:
         await callback.message.edit_text(
             "Главное меню AstroBot v2 PRO:",
             reply_markup=main_menu_keyboard(user_id)
@@ -81,12 +135,16 @@ async def check_status(callback: CallbackQuery):
 @router.callback_query(F.data == "main_menu")
 async def main_menu(callback: CallbackQuery):
     user_id = callback.from_user.id
-    if not await is_paid(user_id) and user_id not in ADMINS:
+    is_paid_user = await is_paid(user_id)
+    admin_flag = user_id in ADMINS
+
+    if not is_paid_user and not admin_flag:
         await callback.message.edit_text(
             "❌ Доступ запрещён.",
             reply_markup=await payment_keyboard()
         )
         return
+
     await callback.message.edit_text(
         "Главное меню:",
         reply_markup=main_menu_keyboard(user_id)

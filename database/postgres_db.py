@@ -191,6 +191,9 @@ async def init_postgres_db():
                 "ai_limits", json.dumps(DEFAULT_AI_LIMITS, ensure_ascii=False)
             )
 
+    # --- Инициализация рефералов ---
+    await init_referrals_table()
+
     logger.info("✅ Таблицы в PostgreSQL созданы/обновлены")
 
 
@@ -789,3 +792,99 @@ async def get_cache_cleanup_settings() -> dict:
 
 async def set_cache_cleanup_settings(enabled: bool):
     await set_setting("cache_cleanup", {"enabled": enabled})
+
+
+# ============================================================
+# РЕФЕРАЛЬНАЯ ПРОГРАММА
+# ============================================================
+async def init_referrals_table():
+    """Создаёт таблицу referrals."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id SERIAL PRIMARY KEY,
+                referrer_id BIGINT NOT NULL,
+                referral_id BIGINT UNIQUE NOT NULL,
+                bonus_days INTEGER DEFAULT 3,
+                bonus_given BOOLEAN DEFAULT FALSE,
+                bonus_paid BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_referrals_referrer
+            ON referrals(referrer_id)
+        """)
+    logger.info("✅ Таблица referrals создана/проверена")
+
+
+async def get_referral_settings() -> dict:
+    default = {
+        "enabled": True,
+        "bonus_days": 3,
+        "max_bonuses": 10,
+    }
+    data = await get_setting("referral_settings", default)
+    if not isinstance(data, dict):
+        return default
+    for k, v in default.items():
+        if k not in data:
+            data[k] = v
+    return data
+
+
+async def set_referral_settings(enabled: bool = None, bonus_days: int = None,
+                                 max_bonuses: int = None):
+    current = await get_referral_settings()
+    if enabled is not None:
+        current["enabled"] = enabled
+    if bonus_days is not None:
+        current["bonus_days"] = bonus_days
+    if max_bonuses is not None:
+        current["max_bonuses"] = max_bonuses
+    await set_setting("referral_settings", current)
+
+
+async def add_referral(referrer_id: int, referral_id: int, bonus_days: int = 3) -> bool:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchval(
+            "SELECT id FROM referrals WHERE referral_id = $1", referral_id
+        )
+        if existing:
+            return False
+        await conn.execute("""
+            INSERT INTO referrals (referrer_id, referral_id, bonus_days)
+            VALUES ($1, $2, $3)
+        """, referrer_id, referral_id, bonus_days)
+        return True
+
+
+async def mark_referral_bonus_paid(referral_id: int):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            UPDATE referrals SET bonus_given = TRUE, bonus_paid = TRUE
+            WHERE referral_id = $1
+        """, referral_id)
+
+
+async def count_user_referrals(referrer_id: int) -> int:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1",
+            referrer_id
+        )
+    return count or 0
+
+
+async def count_user_referrals_with_bonus(referrer_id: int) -> int:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1 AND bonus_given = TRUE",
+            referrer_id
+        )
+    return count or 0
