@@ -9,6 +9,7 @@ from .pdf_handler import router as pdf_router
 from .payment import router as payment_router
 
 from .menu_commands import router as menu_router
+from .mood_diary import router as mood_router
 __all__ = [
     "start_router",
     "ai_router",
@@ -20,4 +21,5 @@ __all__ = [
     "pdf_router",
     "payment_router",
     'menu_router',
+    'mood_router',
 ]

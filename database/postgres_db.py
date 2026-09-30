@@ -191,6 +191,9 @@ async def init_postgres_db():
                 "ai_limits", json.dumps(DEFAULT_AI_LIMITS, ensure_ascii=False)
             )
 
+    # --- Инициализация дневника настроения ---
+    await init_mood_table()
+
     # --- Инициализация рефералов ---
     await init_referrals_table()
 
@@ -356,11 +359,68 @@ async def get_stats():
 # ============================================================
 # USER NOTES
 # ============================================================
+
+
+# ============================================================
+# НОРМАЛИЗАЦИЯ ФАКТОВ
+# ============================================================
+def normalize_fact(fact: str) -> str:
+    """
+    Приводит факт к 3-му лицу.
+    Примеры:
+      "люблю кофе" -> "Любит кофе"
+      "я программист" -> "Программист"
+      "работаю в IT" -> "Работает в IT"
+    """
+    if not fact:
+        return fact
+    fact = fact.strip().rstrip(".!?")
+    lower = fact.lower()
+
+    # Замены (в порядке приоритета)
+    replacements = [
+        ("я не люблю ", "Не любит "),
+        ("я люблю ", "Любит "),
+        ("я не хочу ", "Не хочет "),
+        ("я хочу ", "Хочет "),
+        ("я не работаю ", "Не работает "),
+        ("я работаю ", "Работает "),
+        ("я не живу ", "Не живёт "),
+        ("я живу в ", "Живёт в "),
+        ("я живу ", "Живёт "),
+        ("мне не нравится ", "Не нравится "),
+        ("мне нравится ", "Нравится "),
+        ("у меня есть ", "Есть "),
+        ("у меня нет ", "Нет "),
+        ("меня зовут ", "Зовут "),
+        ("мой ", "Его "),
+        ("моя ", "Её "),
+        ("моё ", "Его "),
+        ("мои ", "Его "),
+        ("я ", ""),
+    ]
+
+    for old, new in replacements:
+        if lower.startswith(old):
+            fact = new + fact[len(old):]
+            break
+
+    # Первая буква заглавная
+    if fact:
+        fact = fact[0].upper() + fact[1:]
+    return fact.strip()
+
+
 async def add_user_note(user_id: int, note: str):
+    # Нормализуем факт
+    note = normalize_fact(note)
+    if not note:
+        return
     pool = await db.create_pool()
     async with pool.acquire() as conn:
+        # Точная проверка
         existing = await conn.fetchval(
-            "SELECT id FROM user_notes WHERE user_id = $1 AND note = $2",
+            "SELECT id FROM user_notes WHERE user_id = $1 AND LOWER(note) = LOWER($2)",
             user_id, note
         )
         if existing:
@@ -1140,3 +1200,103 @@ def invalidate_user_cache(user_id: int):
         admin_cache.delete(f"adm_{user_id}")
     except Exception:
         pass
+
+
+# ============================================================
+# ДНЕВНИК НАСТРОЕНИЯ
+# ============================================================
+async def init_mood_table():
+    """Создаёт таблицу mood_diary."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS mood_diary (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                mood INTEGER NOT NULL,
+                mood_date DATE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (user_id, mood_date)
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mood_user ON mood_diary(user_id)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mood_date ON mood_diary(mood_date)
+        """)
+    logger.info("✅ Таблица mood_diary создана/проверена")
+
+
+async def set_mood(user_id: int, mood: int):
+    """Сохраняет настроение на сегодня (или обновляет)."""
+    from datetime import date
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO mood_diary (user_id, mood, mood_date)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, mood_date)
+            DO UPDATE SET mood = $2, created_at = CURRENT_TIMESTAMP
+        """, user_id, mood, today)
+
+
+async def get_mood_today(user_id: int):
+    """Возвращает настроение за сегодня или None."""
+    from datetime import date
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT mood FROM mood_diary WHERE user_id = $1 AND mood_date = $2",
+            user_id, today
+        )
+        return row["mood"] if row else None
+
+
+async def get_mood_history(user_id: int, days: int = 30) -> list:
+    """Возвращает список настроений за N дней (от новых к старым)."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(f"""
+            SELECT mood, mood_date FROM mood_diary
+            WHERE user_id = $1
+              AND mood_date >= CURRENT_DATE - INTERVAL '{days} days'
+            ORDER BY mood_date DESC
+        """, user_id)
+        return [dict(r) for r in rows]
+
+
+async def get_mood_stats(user_id: int, days: int = 7) -> dict:
+    """Статистика: средний балл, количество записей."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(f"""
+            SELECT
+                COUNT(*) as total,
+                AVG(mood) as avg_mood,
+                MIN(mood) as min_mood,
+                MAX(mood) as max_mood
+            FROM mood_diary
+            WHERE user_id = $1
+              AND mood_date >= CURRENT_DATE - INTERVAL '{days} days'
+        """, user_id)
+        return {
+            "total": row["total"] or 0,
+            "avg": float(row["avg_mood"]) if row["avg_mood"] else 0,
+            "min": row["min_mood"] or 0,
+            "max": row["max_mood"] or 0,
+        }
+
+
+async def count_bad_mood_streak(user_id: int) -> int:
+    """Считает подряд идущие дни с плохим настроением (<=2)."""
+    history = await get_mood_history(user_id, days=10)
+    streak = 0
+    for entry in history:
+        if entry["mood"] <= 2:
+            streak += 1
+        else:
+            break
+    return streak

@@ -27,6 +27,7 @@ def main_menu_keyboard(user_id):
     kb.button(text="🌙 Гороскоп дня", callback_data="daily_horoscope")
     kb.button(text="💕 Совместимость", callback_data="compatibility")
     kb.button(text="👤 Профиль", callback_data="profile")
+    kb.button(text="📔 Дневник", callback_data="mood_diary")
     kb.button(text="📄 PDF отчёт", callback_data="generate_pdf")
     from config import ADMINS
     if user_id in ADMINS:
