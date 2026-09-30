@@ -72,6 +72,7 @@ async def show_admin_panel(target, edit: bool = True):
          InlineKeyboardButton(text="👥 Юзеры", callback_data="admin_users")],
         [InlineKeyboardButton(text="💎 Подписки", callback_data="admin_subs"),
          InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
+                [InlineKeyboardButton(text="✨ Утренние факты", callback_data="admin_daily_facts")],
         [InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu")],
     ])
 
@@ -921,3 +922,118 @@ async def cleanup_now(callback: CallbackQuery):
         logger.error(f"Очистка: {e}")
         await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
     await admin_cleanup(callback)
+
+
+# ============================================================
+# ✨ УТРЕННИЕ ФАКТЫ
+# ============================================================
+@router.callback_query(F.data == "admin_daily_facts")
+async def admin_daily_facts(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import (
+        get_daily_fact_settings, get_today_fact, get_fact_history,
+        count_all_users,
+    )
+    settings = await get_daily_fact_settings()
+    today = await get_today_fact()
+    history = await get_fact_history()
+    total = await count_all_users()
+
+    enabled = settings.get("enabled", True)
+    status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
+
+    text = (
+        f"✨ УТРЕНИЕ ФАКТЫ\n\n"
+        f"Статус: {status}\n"
+        f"Время: {settings.get('hour_utc', 9):02d}:{settings.get('minute_utc', 0):02d} UTC\n"
+        f"👥 Всего пользователей: {total}\n\n"
+    )
+    if today and today.get("text"):
+        short = today["text"][:200] + "..." if len(today["text"]) > 200 else today["text"]
+        text += f"📅 Факт на сегодня:\n{short}\n\n"
+
+    text += f"📚 История: {len(history)} фактов"
+
+    toggle = "❌ Выключить" if enabled else "✅ Включить"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle, callback_data="daily_facts_toggle")],
+        [InlineKeyboardButton(text="🧪 Отправить сейчас (себе)", callback_data="daily_facts_test")],
+        [InlineKeyboardButton(text="🔄 Сгенерировать новый", callback_data="daily_facts_regen")],
+        [InlineKeyboardButton(text="📚 История", callback_data="daily_facts_history")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+    ])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "daily_facts_toggle")
+async def daily_facts_toggle(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import get_daily_fact_settings, set_daily_fact_settings
+    settings = await get_daily_fact_settings()
+    new = not settings.get("enabled", True)
+    await set_daily_fact_settings(enabled=new)
+    await callback.answer("✅ Изменено", show_alert=True)
+    await admin_daily_facts(callback)
+
+
+@router.callback_query(F.data == "daily_facts_test")
+async def daily_facts_test(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    try:
+        from services.daily_facts import send_test_fact
+        from loader import bot
+        ok = await send_test_fact(bot, callback.from_user.id)
+        await callback.answer("✅ Отправлено" if ok else "❌ Ошибка", show_alert=True)
+    except Exception as e:
+        logger.error(f"Тест фактов: {e}")
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+
+@router.callback_query(F.data == "daily_facts_regen")
+async def daily_facts_regen(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    try:
+        from services.daily_facts import generate_fact
+        from database.postgres_db import set_today_fact, save_fact_history
+        new_fact = await generate_fact()
+        if new_fact:
+            await set_today_fact(new_fact)
+            await save_fact_history(new_fact)
+            await callback.answer("✅ Сгенерирован", show_alert=True)
+        else:
+            await callback.answer("❌ Не удалось", show_alert=True)
+    except Exception as e:
+        logger.error(f"Регенерация: {e}")
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+    await admin_daily_facts(callback)
+
+
+@router.callback_query(F.data == "daily_facts_history")
+async def daily_facts_history(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    from database.postgres_db import get_fact_history
+    history = await get_fact_history()
+    if not history:
+        await callback.answer("История пуста", show_alert=True)
+        return
+
+    text = "📚 ИСТОРИЯ ФАКТОВ (7 дней)\n\n"
+    for i, item in enumerate(history[:7], 1):
+        short = item["text"][:150] + "..." if len(item["text"]) > 150 else item["text"]
+        text += f"{i}. [{item['date']}]\n{short}\n\n"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_daily_facts")],
+    ])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)

@@ -888,3 +888,82 @@ async def count_user_referrals_with_bonus(referrer_id: int) -> int:
             referrer_id
         )
     return count or 0
+
+
+# ============================================================
+# УТРЕННИЕ ФАКТЫ
+# ============================================================
+async def get_daily_fact_settings() -> dict:
+    default = {"enabled": True, "hour_utc": 9, "minute_utc": 0}
+    data = await get_setting("daily_fact_settings", default)
+    if not isinstance(data, dict):
+        return default
+    for k, v in default.items():
+        if k not in data:
+            data[k] = v
+    return data
+
+
+async def set_daily_fact_settings(enabled: bool = None, hour_utc: int = None,
+                                   minute_utc: int = None):
+    current = await get_daily_fact_settings()
+    if enabled is not None:
+        current["enabled"] = enabled
+    if hour_utc is not None:
+        current["hour_utc"] = hour_utc
+    if minute_utc is not None:
+        current["minute_utc"] = minute_utc
+    await set_setting("daily_fact_settings", current)
+
+
+async def get_today_fact() -> dict:
+    from datetime import datetime as dt
+    today = dt.now().strftime("%Y-%m-%d")
+    data = await get_setting("daily_fact", {})
+    if not isinstance(data, dict):
+        return {}
+    if data.get("date") == today:
+        return data
+    return {}
+
+
+async def set_today_fact(text: str):
+    from datetime import datetime as dt
+    today = dt.now().strftime("%Y-%m-%d")
+    await set_setting("daily_fact", {"date": today, "text": text})
+
+
+async def save_fact_history(text: str):
+    from datetime import datetime as dt
+    history = await get_setting("daily_fact_history", [])
+    if not isinstance(history, list):
+        history = []
+    history.insert(0, {
+        "date": dt.now().strftime("%Y-%m-%d"),
+        "text": text,
+    })
+    history = history[:7]
+    await set_setting("daily_fact_history", history)
+
+
+async def get_fact_history() -> list:
+    history = await get_setting("daily_fact_history", [])
+    if not isinstance(history, list):
+        return []
+    return history
+
+
+async def get_all_users() -> list:
+    """Все пользователи."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT user_id FROM users")
+        return [dict(r) for r in rows]
+
+
+async def count_all_users() -> int:
+    """Общее число пользователей."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval("SELECT COUNT(*) FROM users")
+    return count or 0

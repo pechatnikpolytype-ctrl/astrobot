@@ -1,14 +1,11 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from aiogram import Bot
 
 logger = logging.getLogger(__name__)
 
 
-# ============================================================
-# УТРЕННИЕ СООБЩЕНИЯ АДМИНАМ
-# ============================================================
 async def send_morning_message(bot: Bot):
     from config import ADMINS
     text = "🌅 Доброе утро! Бот работает, всё в порядке."
@@ -19,9 +16,6 @@ async def send_morning_message(bot: Bot):
             logger.error(f"Утреннее сообщение админу {admin_id}: {e}")
 
 
-# ============================================================
-# НАПОМИНАНИЯ ПОЛЬЗОВАТЕЛЯМ
-# ============================================================
 async def send_daily_reminders(bot: Bot):
     try:
         from services.reminder import send_reminders
@@ -30,9 +24,14 @@ async def send_daily_reminders(bot: Bot):
         logger.error(f"Ошибка напоминаний: {e}")
 
 
-# ============================================================
-# АВТООЧИСТКА КЭША
-# ============================================================
+async def send_daily_facts_wrapper(bot: Bot):
+    try:
+        from services.daily_facts import send_daily_facts
+        await send_daily_facts(bot)
+    except Exception as e:
+        logger.error(f"Ошибка фактов: {e}")
+
+
 async def daily_cache_cleanup():
     try:
         from database.postgres_db import (
@@ -40,16 +39,12 @@ async def daily_cache_cleanup():
         )
         settings = await get_cache_cleanup_settings()
         if not settings.get("enabled", True):
-            logger.info("⏸️ Автоочистка отключена")
             return
         await auto_clean_cache()
     except Exception as e:
         logger.error(f"Ошибка автоочистки: {e}")
 
 
-# ============================================================
-# ЕЖЕДНЕВНЫЙ БЭКАП
-# ============================================================
 async def daily_backup():
     try:
         from backup_db import create_backup
@@ -58,36 +53,39 @@ async def daily_backup():
         logger.error(f"Ошибка бэкапа: {e}")
 
 
-# ============================================================
-# ГЛАВНЫЙ WORKER
-# ============================================================
 async def scheduler_worker(bot: Bot):
-    """Фоновая задача: проверяет время и запускает функции."""
     last_backup_date = None
     last_reminder_date = None
-    last_cleanup_date = None
     last_morning_date = None
+    last_facts_date = None
 
     logger.info("⏰ Scheduler запущен")
 
     while True:
         now = datetime.utcnow()
 
-        # 08:00 UTC — утренние сообщения админам
+        # 08:00 UTC — админам
         if now.hour == 8 and now.minute == 0 and last_morning_date != now.date():
             logger.info("⏰ 08:00 UTC — утренние сообщения")
             await send_morning_message(bot)
             last_morning_date = now.date()
             await asyncio.sleep(61)
 
-        # 18:00 UTC — напоминания пользователям
+        # 09:00 UTC — утренние факты
+        elif now.hour == 9 and now.minute == 0 and last_facts_date != now.date():
+            logger.info("⏰ 09:00 UTC — утренние факты")
+            await send_daily_facts_wrapper(bot)
+            last_facts_date = now.date()
+            await asyncio.sleep(61)
+
+        # 18:00 UTC — напоминания
         elif now.hour == 18 and now.minute == 0 and last_reminder_date != now.date():
             logger.info("⏰ 18:00 UTC — напоминания")
             await send_daily_reminders(bot)
             last_reminder_date = now.date()
             await asyncio.sleep(61)
 
-        # 03:00 UTC — автоочистка + бэкап
+        # 03:00 UTC — очистка + бэкап
         elif now.hour == 3 and now.minute == 0 and last_backup_date != now.date():
             logger.info("⏰ 03:00 UTC — бэкап + очистка")
             await daily_cache_cleanup()
@@ -100,6 +98,5 @@ async def scheduler_worker(bot: Bot):
 
 
 async def start_scheduler(bot: Bot):
-    """Запускает планировщик как фоновую задачу."""
     logger.info("⏰ Запуск планировщика...")
     asyncio.create_task(scheduler_worker(bot))
