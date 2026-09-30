@@ -8,6 +8,7 @@ from database.postgres_db import (
     get_user_ai_limit, get_ai_usage,
     get_referral_settings, count_user_referrals,
     count_user_referrals_with_bonus,
+    is_admin,
 )
 from keyboards.main import back_to_menu_keyboard
 from config import ADMINS

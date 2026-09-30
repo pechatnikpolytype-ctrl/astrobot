@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from keyboards.main import back_to_menu_keyboard, main_menu_keyboard
-from database.postgres_db import is_paid, get_setting, set_setting
+from database.postgres_db import is_paid, get_setting, set_setting, is_admin
 from config import ADMINS
 from astrology_calculator import AstrologyCalculator
 from ai_service_n1n import ai_service

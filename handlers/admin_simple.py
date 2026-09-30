@@ -73,6 +73,7 @@ async def show_admin_panel(target, edit: bool = True):
         [InlineKeyboardButton(text="💎 Подписки", callback_data="admin_subs"),
          InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
                 [InlineKeyboardButton(text="✨ Утренние факты", callback_data="admin_daily_facts")],
+        [InlineKeyboardButton(text="👑 Админы", callback_data="admin_manage_admins")],
         [InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu")],
     ])
 
@@ -1037,3 +1038,177 @@ async def daily_facts_history(callback: CallbackQuery):
         await callback.message.edit_text(text, reply_markup=keyboard)
     except Exception:
         await callback.message.answer(text, reply_markup=keyboard)
+
+
+# ============================================================
+# 👑 УПРАВЛЕНИЕ АДМИНАМИ
+# ============================================================
+class AdminManageStates(StatesGroup):
+    waiting_new_admin_id = State()
+
+
+@router.callback_query(F.data == "admin_manage_admins")
+async def admin_manage_admins(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    from database.postgres_db import is_main_admin, get_extra_admins
+    from config import ADMINS as MAIN_ADMINS
+
+    is_main = await is_main_admin(callback.from_user.id)
+    main_list = "\n".join([f"  • {a}" for a in MAIN_ADMINS]) or "  (нет)"
+    extra = await get_extra_admins()
+    extra_list = "\n".join([f"  • {a}" for a in extra]) if extra else "  (нет)"
+
+    text = (
+        f"👑 УПРАВЛЕНИЕ АДМИНАМИ\n\n"
+        f"🔑 Главные (из .env):\n{main_list}\n\n"
+        f"➕ Дополнительные:\n{extra_list}\n\n"
+    )
+
+    if is_main:
+        text += "💡 Вы можете добавлять и удалять."
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить", callback_data="admins_add")],
+            [InlineKeyboardButton(text="🗑️ Удалить", callback_data="admins_remove")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        ])
+    else:
+        text += "⚠️ Только главный админ."
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        ])
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "admins_add")
+async def admins_add_start(callback: CallbackQuery, state: FSMContext):
+    from database.postgres_db import is_main_admin
+    if not await is_main_admin(callback.from_user.id):
+        await callback.answer("❌ Только главный админ.", show_alert=True)
+        return
+    await state.set_state(AdminManageStates.waiting_new_admin_id)
+    await callback.message.edit_text(
+        "👑 ДОБАВИТЬ АДМИНА\n\n"
+        "Введите ID нового админа:\n"
+        "Например: 123456789\n\n"
+        "⚠️ Новый админ получит полный доступ.\n\n"
+        "/cancel — отмена"
+    )
+
+
+@router.message(AdminManageStates.waiting_new_admin_id)
+async def admins_add_save(message: Message, state: FSMContext):
+    from database.postgres_db import is_main_admin, add_extra_admin
+    if not await is_main_admin(message.from_user.id):
+        await state.clear()
+        return
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("Отменено")
+        return
+    try:
+        new_id = int(message.text.strip())
+        if new_id <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите положительное число (ID).")
+        return
+
+    from config import ADMINS as MAIN_ADMINS
+    if new_id in MAIN_ADMINS:
+        await message.answer("❌ Уже главный админ.")
+        await state.clear()
+        return
+
+    success = await add_extra_admin(new_id)
+    if success:
+        await message.answer(f"✅ Админ {new_id} добавлен.")
+        try:
+            from loader import bot
+            await bot.send_message(
+                new_id,
+                "👑 Вам предоставлены права администратора AstroBot.\n\n"
+                "Теперь вам доступна /admin."
+            )
+        except Exception:
+            pass
+    else:
+        await message.answer(f"❌ {new_id} уже админ.")
+    await state.clear()
+    await show_admin_panel(message)
+
+
+@router.callback_query(F.data == "admins_remove")
+async def admins_remove_menu(callback: CallbackQuery):
+    from database.postgres_db import is_main_admin, get_extra_admins
+    if not await is_main_admin(callback.from_user.id):
+        await callback.answer("❌ Только главный админ.", show_alert=True)
+        return
+    extra = await get_extra_admins()
+    if not extra:
+        await callback.answer("Нет доп. админов.", show_alert=True)
+        return
+    buttons = []
+    for admin_id in extra:
+        buttons.append([InlineKeyboardButton(
+            text=f"🗑️ {admin_id}",
+            callback_data=f"admin_rm_{admin_id}"
+        )])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_manage_admins")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text("🗑️ ВЫБЕРИТЕ АДМИНА", reply_markup=keyboard)
+
+
+# ВАЖНО: сначала более специфичный фильтр (do_), потом общий (rm_)
+@router.callback_query(F.data.startswith("admin_rm_do_"))
+async def admins_remove_do(callback: CallbackQuery):
+    from database.postgres_db import is_main_admin, remove_extra_admin
+    if not await is_main_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа.", show_alert=True)
+        return
+    target_id = int(callback.data.replace("admin_rm_do_", ""))
+    success = await remove_extra_admin(target_id)
+    if success:
+        await callback.answer(f"✅ Админ {target_id} удалён", show_alert=True)
+        try:
+            from loader import bot
+            await bot.send_message(
+                target_id,
+                "⚠️ Ваши права администратора отозваны."
+            )
+        except Exception:
+            pass
+    else:
+        await callback.answer("❌ Не найден", show_alert=True)
+    await admin_manage_admins(callback)
+
+
+@router.callback_query(F.data.startswith("admin_rm_"))
+async def admins_remove_confirm(callback: CallbackQuery):
+    from database.postgres_db import is_main_admin
+    if not await is_main_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа.", show_alert=True)
+        return
+    # Парсим только если не do_
+    raw = callback.data.replace("admin_rm_", "")
+    if raw.startswith("do_"):
+        return  # на всякий случай
+    try:
+        target_id = int(raw)
+    except ValueError:
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"admin_rm_do_{target_id}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_manage_admins")],
+    ])
+    await callback.message.edit_text(
+        f"⚠️ Удалить админа {target_id}?",
+        reply_markup=keyboard
+    )

@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery, FSInputFile
 from services.pdf_generator import pdf_gen
 from services.natal_service import natal_service
 from keyboards.main import pdf_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
-from database.postgres_db import get_user
+from database.postgres_db import get_user, is_admin
 from ai_service_n1n import ai_service
 import logging
 import os

@@ -13,6 +13,7 @@ from utils.validators import validator
 from database.postgres_db import (
     get_user_ai_limit, get_ai_usage, increment_ai_usage,
     add_user_note, get_user, get_user_notes,
+    is_admin,
 )
 from config import ADMINS
 
@@ -175,7 +176,7 @@ async def process_ai_question(message: Message, state: FSMContext):
             await increment_ai_usage(user_id)
 
         admin_marker = ""
-        if user_id in ADMINS:
+        if await is_admin(user_id):
             admin_marker = f"\n\n🤖 Модель: {response.get('model', '?')}"
 
         # Ответ + кнопка «Закончить диалог»

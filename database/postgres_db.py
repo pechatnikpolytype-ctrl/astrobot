@@ -257,6 +257,9 @@ async def is_paid(user_id: int) -> bool:
     if FREE_MODE:
         return True
 
+    if await is_admin(user_id):
+        return True
+
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -459,7 +462,7 @@ async def set_ai_limits(free: int, premium: int, count_cached: bool = None):
 
 async def get_user_ai_limit(user_id: int) -> int:
     """Возвращает лимит для пользователя (-1 = без лимита)."""
-    if user_id in ADMINS:
+    if await is_admin(user_id):
         return -1  # без лимита
 
     limits = await get_ai_limits()
@@ -967,3 +970,94 @@ async def count_all_users() -> int:
     async with pool.acquire() as conn:
         count = await conn.fetchval("SELECT COUNT(*) FROM users")
     return count or 0
+
+
+# ============================================================
+# УПРАВЛЕНИЕ АДМИНАМИ
+# ============================================================
+async def get_extra_admins() -> list:
+    data = await get_setting("extra_admins", [])
+    if not isinstance(data, list):
+        return []
+    result = []
+    for x in data:
+        try:
+            result.append(int(x))
+        except (ValueError, TypeError):
+            pass
+    return result
+
+
+async def add_extra_admin(user_id: int) -> bool:
+    current = await get_extra_admins()
+    if user_id in current:
+        return False
+    current.append(int(user_id))
+    await set_setting("extra_admins", current)
+    return True
+
+
+async def remove_extra_admin(user_id: int) -> bool:
+    current = await get_extra_admins()
+    if user_id not in current:
+        return False
+    current.remove(int(user_id))
+    await set_setting("extra_admins", current)
+    return True
+
+
+async def get_all_admins() -> list:
+    from config import ADMINS as MAIN_ADMINS
+    extra = await get_extra_admins()
+    return list(set(MAIN_ADMINS + extra))
+
+
+async def is_admin(user_id: int) -> bool:
+    from config import ADMINS as MAIN_ADMINS
+    if user_id in MAIN_ADMINS:
+        return True
+    extra = await get_extra_admins()
+    return user_id in extra
+
+
+async def is_main_admin(user_id: int) -> bool:
+    from config import ADMINS as MAIN_ADMINS
+    return user_id in MAIN_ADMINS
+
+
+# ============================================================
+# АВТОУДАЛЕНИЕ МЕНЮ
+# ============================================================
+async def set_last_menu(user_id: int, message_id: int, chat_id: int):
+    """Сохраняет ID последнего меню-сообщения."""
+    key = f"last_menu_{user_id}"
+    await set_setting(key, {
+        "message_id": message_id,
+        "chat_id": chat_id,
+    })
+
+
+async def get_last_menu(user_id: int):
+    """Возвращает (chat_id, message_id) последнего меню."""
+    key = f"last_menu_{user_id}"
+    data = await get_setting(key)
+    if not data or not isinstance(data, dict):
+        return None
+    mid = data.get("message_id")
+    cid = data.get("chat_id")
+    if mid and cid:
+        return cid, mid
+    return None
+
+
+async def clear_last_menu(user_id: int):
+    """Очищает запись о последнем меню."""
+    key = f"last_menu_{user_id}"
+    try:
+        pool = await db.create_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM settings WHERE key = $1", key
+            )
+    except Exception as e:
+        logger.warning(f"clear_last_menu: {e}")

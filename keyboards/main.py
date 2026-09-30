@@ -87,3 +87,21 @@ def back_to_menu_keyboard():
     kb = InlineKeyboardBuilder()
     kb.button(text="🔙 Главное меню", callback_data="main_menu")
     return kb.as_markup()
+
+
+
+# ============================================================
+# REPLY-КЛАВИАТУРА (постоянная, внизу)
+# ============================================================
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+
+def main_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Постоянная reply-клавиатура с кнопкой '🏠 Меню'."""
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Напишите сообщение или нажмите 🏠 Меню",
+    )
+    return kb

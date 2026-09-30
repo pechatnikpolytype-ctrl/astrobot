@@ -8,6 +8,7 @@ from .profile import router as profile_router
 from .pdf_handler import router as pdf_router
 from .payment import router as payment_router
 
+from .menu_commands import router as menu_router
 __all__ = [
     "start_router",
     "ai_router",
@@ -18,4 +19,5 @@ __all__ = [
     "profile_router",
     "pdf_router",
     "payment_router",
+    'menu_router',
 ]

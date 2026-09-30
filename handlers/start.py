@@ -6,8 +6,9 @@ from database.postgres_db import (
     set_trial_used, set_subscription, get_trial,
     get_user, add_referral, get_referral_settings,
     count_user_referrals_with_bonus, mark_referral_bonus_paid,
+    is_admin,
 )
-from keyboards.main import welcome_keyboard, main_menu_keyboard, payment_keyboard
+from keyboards.main import welcome_keyboard, main_menu_keyboard, payment_keyboard, main_reply_keyboard
 from config import ADMINS, FREE_MODE
 import logging
 
@@ -78,6 +79,10 @@ async def start_handler(message: Message, command: CommandObject = None):
 
     if FREE_MODE:
         text = f"🌟 Добро пожаловать в AstroBot v2 PRO, {first_name}!"
+        await message.answer(
+            "👇 Меню всегда доступно кнопкой внизу.",
+            reply_markup=main_reply_keyboard()
+        )
         await message.answer(text, reply_markup=await welcome_keyboard())
         return
 
@@ -111,6 +116,10 @@ async def start_handler(message: Message, command: CommandObject = None):
         )
 
     text = f"🌟 Добро пожаловать в AstroBot v2 PRO, {first_name}!"
+    await message.answer(
+        "👇 Меню всегда доступно кнопкой внизу.",
+        reply_markup=main_reply_keyboard()
+    )
     await message.answer(text, reply_markup=await welcome_keyboard())
 
 
