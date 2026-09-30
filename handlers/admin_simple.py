@@ -74,6 +74,7 @@ async def show_admin_panel(target, edit: bool = True):
          InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
                 [InlineKeyboardButton(text="✨ Утренние факты", callback_data="admin_daily_facts")],
         [InlineKeyboardButton(text="👑 Админы", callback_data="admin_manage_admins")],
+        [InlineKeyboardButton(text="📢 Реклама", callback_data="admin_ads")],
         [InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu")],
     ])
 

@@ -29,6 +29,7 @@ dp = Dispatcher()
 from handlers.start import router as start_router
 from handlers.menu_commands import router as menu_router
 from handlers.mood_diary import router as mood_router
+from handlers.admin_ads import router as ads_router
 from handlers.ai_handler import router as ai_router
 from handlers.natal import router as natal_router
 from handlers.admin_simple import router as admin_router
@@ -39,6 +40,7 @@ from handlers.pdf_handler import router as pdf_router
 from handlers.payment import router as payment_router
 
 dp.include_router(start_router)
+dp.include_router(ads_router)
 dp.include_router(mood_router)
 dp.include_router(menu_router)
 dp.include_router(ai_router)

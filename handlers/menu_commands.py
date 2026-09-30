@@ -3,12 +3,13 @@ import random
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from keyboards.main import main_menu_keyboard, main_reply_keyboard
 from database.postgres_db import (
     is_paid, is_admin, get_last_menus, set_last_menus,
+    get_ads_config, should_show_ad, pick_random_ad, log_ad_action,
 )
 from config import FREE_MODE
 
@@ -157,6 +158,11 @@ async def _show_main_menu(message: Message, bot: Bot = None):
         user_id, chat_id, fact_msg.message_id, inline_msg.message_id
     ))
 
+    # Показ рекламы
+    try:
+        await _maybe_show_ad(message, user_id, chat_id)
+    except Exception as e:
+        logger.warning(f"[AD ERROR] Вызов: {e}")
 
 # ============================================================
 # ОБРАБОТЧИКИ С ЗАЩИТОЙ ОТ ДВОЙНОГО НАЖАТИЯ
@@ -238,3 +244,59 @@ async def show_main_menu_from_start(message: Message, bot: Bot = None):
     lock = _get_lock(user_id)
     async with lock:
         await _show_main_menu(message, bot)
+
+
+
+# ============================================================
+# ПОКАЗ РЕКЛАМЫ
+# ============================================================
+async def _maybe_show_ad(message: Message, user_id: int, chat_id: int):
+    """Показывает рекламу, если нужно."""
+    logger.info(f"[AD] Проверка should_show_ad({user_id})")
+    try:
+        show = await should_show_ad(user_id)
+    except Exception as e:
+        logger.warning(f"[AD ERROR] should_show_ad: {e}")
+        return
+
+    if not show:
+        logger.info(f"[AD] should_show_ad вернул False")
+        return
+
+    logger.info(f"[AD] Выбор блока")
+    try:
+        ad = await pick_random_ad()
+    except Exception as e:
+        logger.warning(f"[AD ERROR] pick_random_ad: {e}")
+        return
+
+    if not ad:
+        logger.info(f"[AD] Нет активных блоков")
+        return
+
+    logger.info(f"[AD] Выбран блок #{ad['id']}")
+
+    text = (
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📢 РЕКЛАМА\n\n"
+        f"{ad['text']}"
+    )
+
+    button_text = ad.get("button_text", "Подробнее")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"🔥 {button_text}",
+            callback_data=f"ad_click_{ad['id']}"
+        )],
+    ])
+
+    try:
+        logger.info(f"[AD] Отправка сообщения...")
+        ad_msg = await message.answer(text, reply_markup=keyboard)
+        logger.info(f"[AD] ✅ Отправлено msg_id={ad_msg.message_id}")
+        await log_ad_action(ad["id"], user_id, "show")
+        logger.info(f"[AD] ✅ Показ залогирован")
+    except Exception as e:
+        logger.warning(f"[AD ERROR] не отправлено: {type(e).__name__}: {e}")
+        import traceback
+        logger.warning(traceback.format_exc())

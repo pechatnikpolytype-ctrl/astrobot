@@ -10,6 +10,7 @@ from .payment import router as payment_router
 
 from .menu_commands import router as menu_router
 from .mood_diary import router as mood_router
+from .admin_ads import router as ads_router
 __all__ = [
     "start_router",
     "ai_router",
@@ -22,4 +23,5 @@ __all__ = [
     "payment_router",
     'menu_router',
     'mood_router',
+    'ads_router',
 ]

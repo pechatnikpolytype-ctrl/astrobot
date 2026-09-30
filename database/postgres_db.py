@@ -191,6 +191,9 @@ async def init_postgres_db():
                 "ai_limits", json.dumps(DEFAULT_AI_LIMITS, ensure_ascii=False)
             )
 
+    # --- Инициализация рекламы ---
+    await init_ads_tables()
+
     # --- Инициализация дневника настроения ---
     await init_mood_table()
 
@@ -1300,3 +1303,264 @@ async def count_bad_mood_streak(user_id: int) -> int:
         else:
             break
     return streak
+
+
+# ============================================================
+# РЕКЛАМА
+# ============================================================
+async def init_ads_tables():
+    """Создаёт таблицы ads и ad_stats."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id SERIAL PRIMARY KEY,
+                text TEXT NOT NULL,
+                link TEXT,
+                button_text TEXT DEFAULT 'Подробнее',
+                utm_source TEXT DEFAULT 'astro_bot',
+                utm_medium TEXT DEFAULT 'ad',
+                enabled BOOLEAN DEFAULT TRUE,
+                weight INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ad_stats (
+                id SERIAL PRIMARY KEY,
+                ad_id INTEGER REFERENCES ads(id) ON DELETE CASCADE,
+                user_id BIGINT,
+                action TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ad_stats_ad ON ad_stats(ad_id)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ad_stats_date ON ad_stats(created_at)
+        """)
+    logger.info("✅ Таблицы ads/ad_stats созданы/проверены")
+
+
+async def get_ads_config() -> dict:
+    default = {
+        "enabled": False,
+        "place": "menu",
+        "frequency": "daily",
+        "frequency_value": 1,
+        "max_per_day": 3,
+        "show_to_admins": False,
+    }
+    data = await get_setting("ads_config", default)
+    if not isinstance(data, dict):
+        return default
+    for k, v in default.items():
+        if k not in data:
+            data[k] = v
+    return data
+
+
+async def set_ads_config(**kwargs):
+    current = await get_ads_config()
+    for k, v in kwargs.items():
+        current[k] = v
+    await set_setting("ads_config", current)
+
+
+async def get_all_ads(only_enabled: bool = False) -> list:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        if only_enabled:
+            rows = await conn.fetch(
+                "SELECT * FROM ads WHERE enabled = TRUE ORDER BY id"
+            )
+        else:
+            rows = await conn.fetch("SELECT * FROM ads ORDER BY id")
+        return [dict(r) for r in rows]
+
+
+async def get_ad(ad_id: int):
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM ads WHERE id = $1", ad_id)
+        return dict(row) if row else None
+
+
+async def add_ad(text: str, link: str = None, button_text: str = "Подробнее",
+                  utm_source: str = "astro_bot", utm_medium: str = "ad") -> int:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            INSERT INTO ads (text, link, button_text, utm_source, utm_medium)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        """, text, link, button_text, utm_source, utm_medium)
+        return row["id"]
+
+
+async def update_ad(ad_id: int, **kwargs) -> bool:
+    allowed = {"text", "link", "button_text", "enabled", "weight",
+               "utm_source", "utm_medium"}
+    fields = []
+    values = []
+    for i, (k, v) in enumerate(kwargs.items(), 1):
+        if k not in allowed:
+            continue
+        fields.append(f"{k} = ${i}")
+        values.append(v)
+    if not fields:
+        return False
+    values.append(ad_id)
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            f"UPDATE ads SET {', '.join(fields)} WHERE id = ${len(values)}",
+            *values
+        )
+    return True
+
+
+async def delete_ad(ad_id: int) -> bool:
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM ads WHERE id = $1", ad_id)
+    return result.endswith("1")
+
+
+async def toggle_ad(ad_id: int) -> bool:
+    """Переключает enabled. Возвращает новое состояние."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "UPDATE ads SET enabled = NOT enabled WHERE id = $1 RETURNING enabled",
+            ad_id
+        )
+        return row["enabled"] if row else False
+
+
+async def log_ad_action(ad_id: int, user_id: int, action: str):
+    """Логирует показ или клик."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO ad_stats (ad_id, user_id, action)
+            VALUES ($1, $2, $3)
+        """, ad_id, user_id, action)
+
+
+async def get_ad_stats(ad_id: int, days: int = 7) -> dict:
+    """Статистика одного блока за N дней."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        shows = await conn.fetchval(f"""
+            SELECT COUNT(*) FROM ad_stats
+            WHERE ad_id = $1 AND action = 'show'
+            AND created_at >= NOW() - INTERVAL '{days} days'
+        """, ad_id) or 0
+        clicks = await conn.fetchval(f"""
+            SELECT COUNT(*) FROM ad_stats
+            WHERE ad_id = $1 AND action = 'click'
+            AND created_at >= NOW() - INTERVAL '{days} days'
+        """, ad_id) or 0
+    ctr = (clicks / shows * 100) if shows > 0 else 0
+    return {"shows": shows, "clicks": clicks, "ctr": round(ctr, 1)}
+
+
+async def get_all_ad_stats(days: int = 7) -> dict:
+    """Общая статистика за N дней."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        shows = await conn.fetchval(f"""
+            SELECT COUNT(*) FROM ad_stats
+            WHERE action = 'show'
+            AND created_at >= NOW() - INTERVAL '{days} days'
+        """) or 0
+        clicks = await conn.fetchval(f"""
+            SELECT COUNT(*) FROM ad_stats
+            WHERE action = 'click'
+            AND created_at >= NOW() - INTERVAL '{days} days'
+        """) or 0
+    ctr = (clicks / shows * 100) if shows > 0 else 0
+    return {"shows": shows, "clicks": clicks, "ctr": round(ctr, 1)}
+
+
+async def should_show_ad(user_id: int) -> bool:
+    """Проверяет, показывать ли рекламу пользователю сейчас."""
+    config = await get_ads_config()
+    if not config.get("enabled"):
+        return False
+
+    # Админам?
+    if not config.get("show_to_admins", False):
+        if await is_admin(user_id):
+            return False
+
+    # Лимит в день
+    from datetime import date
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        today_count = await conn.fetchval("""
+            SELECT COUNT(*) FROM ad_stats
+            WHERE user_id = $1
+            AND action = 'show'
+            AND created_at::date = CURRENT_DATE
+        """, user_id) or 0
+
+    max_per_day = config.get("max_per_day", 3)
+    if max_per_day > 0 and today_count >= max_per_day:
+        return False
+
+    # Частота
+    freq = config.get("frequency", "daily")
+    if freq == "always":
+        return True
+    elif freq == "daily":
+        # Уже показывали сегодня?
+        pool = await db.create_pool()
+        async with pool.acquire() as conn:
+            shown_today = await conn.fetchval("""
+                SELECT COUNT(*) FROM ad_stats
+                WHERE user_id = $1
+                AND action = 'show'
+                AND created_at::date = CURRENT_DATE
+            """, user_id) or 0
+        return shown_today == 0
+    elif freq == "every_n":
+        n = config.get("frequency_value", 5)
+        if n <= 0:
+            return True
+        # Считаем все действия пользователя (можно заменить на счётчик меню)
+        pool = await db.create_pool()
+        async with pool.acquire() as conn:
+            total = await conn.fetchval("""
+                SELECT COUNT(*) FROM requests WHERE user_id = $1
+            """, user_id) or 0
+        return (total % n) == 0
+    return True
+
+
+async def pick_random_ad() -> dict:
+    """Случайный активный рекламный блок."""
+    ads = await get_all_ads(only_enabled=True)
+    if not ads:
+        return {}
+    import random
+    # Взвешенный выбор
+    weights = [max(1, a.get("weight", 1)) for a in ads]
+    return random.choices(ads, weights=weights, k=1)[0]
+
+
+# ============================================================
+# MIGRATION: link_mode для ads
+# ============================================================
+async def migrate_ads_link_mode():
+    """Добавляет поле link_mode в ads, если его нет."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        try:
+            await conn.execute(
+                "ALTER TABLE ads ADD COLUMN IF NOT EXISTS link_mode TEXT DEFAULT 'direct'"
+            )
+        except Exception as e:
+            logger.warning(f"migrate_ads_link_mode: {e}")
