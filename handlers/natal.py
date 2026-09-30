@@ -72,8 +72,10 @@ async def natal_name(message: Message, state: FSMContext):
     await state.set_state(NatalChartStates.waiting_birth_date)
     await message.answer(
         "📅 ВВЕДИТЕ ДАТУ РОЖДЕНИЯ\n\n"
-        "Формат: ГГГГ-ММ-ДД\n"
-        "Например: 1990-05-15\n\n"
+        "Форматы:\n"
+        "  • 15.05.1990\n"
+        "  • 15/05/1990\n"
+        "  • 1990-05-15\n\n"
         "/cancel — отмена"
     )
 

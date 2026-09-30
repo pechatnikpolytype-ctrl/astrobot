@@ -84,13 +84,16 @@ def parse_input(text: str) -> dict:
         if sign.lower() in text_clean.lower():
             return {"type": "sign", "value": sign, "sign": sign}
 
-    # По дате
-    try:
-        date_obj = datetime.strptime(text_clean, "%Y-%m-%d")
-        sign = AstrologyCalculator.get_zodiac_sign(date_obj)
-        return {"type": "date", "value": text_clean, "sign": sign}
-    except Exception:
-        pass
+    # По дате — используем универсальный парсер
+    from utils.date_parser import parse_date
+    ok, iso_date, _ = parse_date(text_clean)
+    if ok:
+        try:
+            date_obj = datetime.strptime(iso_date, "%Y-%m-%d")
+            sign = AstrologyCalculator.get_zodiac_sign(date_obj)
+            return {"type": "date", "value": iso_date, "sign": sign}
+        except Exception:
+            pass
 
     return {"type": None, "value": None, "sign": None}
 

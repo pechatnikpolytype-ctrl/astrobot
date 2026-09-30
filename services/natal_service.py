@@ -114,17 +114,16 @@ class NatalService:
     # ВАЛИДАЦИЯ
     # ============================================================
     def validate_date(self, date_str: str) -> Tuple[bool, Optional[Tuple[int, int, int]], str]:
+        """Валидирует дату — поддерживает ДД.ММ.ГГГГ, ДД/ММ/ГГГГ, ГГГГ-ММ-ДД и др."""
+        from utils.date_parser import parse_date
+        ok, iso_date, err = parse_date(date_str)
+        if not ok:
+            return False, None, err
         try:
-            year, month, day = map(int, date_str.split("-"))
-            birth_date = datetime(year, month, day)
-            if birth_date > datetime.now():
-                return False, None, "Дата не может быть в будущем"
-            age = (datetime.now() - birth_date).days / 365.25
-            if age > 120:
-                return False, None, "Возраст > 120 лет"
-            return True, (year, month, day), ""
-        except Exception:
-            return False, None, "Формат: ГГГГ-ММ-ДД"
+            birth_date = datetime.strptime(iso_date, "%Y-%m-%d")
+            return True, (birth_date.year, birth_date.month, birth_date.day), ""
+        except Exception as e:
+            return False, None, str(e)
 
     def validate_time(self, time_str: str) -> Tuple[bool, Optional[Tuple[int, int]], str]:
         try:

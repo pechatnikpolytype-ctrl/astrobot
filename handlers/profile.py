@@ -179,7 +179,7 @@ async def profile_edit_menu(callback: CallbackQuery):
 @router.callback_query(F.data == "pe_birth_date")
 async def pe_birth_date(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ProfileEditStates.waiting_birth_date)
-    await callback.message.edit_text("🎂 Введите дату (ГГГГ-ММ-ДД):\n\n/cancel — отмена")
+    await callback.message.edit_text("🎂 Введите дату рождения:\n\nФорматы: 15.05.1990, 15/05/1990, 1990-05-15\n\n/cancel — отмена")
 
 
 @router.message(ProfileEditStates.waiting_birth_date)
@@ -188,14 +188,14 @@ async def pe_birth_date_save(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("Отменено")
         return
-    try:
-        datetime.strptime(message.text.strip(), "%Y-%m-%d")
-    except ValueError:
-        await message.answer("❌ Неверный формат")
+    from utils.date_parser import parse_date
+    ok, iso_date, err = parse_date(message.text)
+    if not ok:
+        await message.answer(f"❌ {err}\n\nПопробуйте снова или /cancel")
         return
-    await update_user_field(message.from_user.id, "birth_date", message.text.strip())
+    await update_user_field(message.from_user.id, "birth_date", iso_date)
     await state.clear()
-    await message.answer("✅ Дата обновлена!")
+    await message.answer(f"✅ Дата обновлена: {iso_date}")
 
 
 @router.callback_query(F.data == "pe_birth_time")
