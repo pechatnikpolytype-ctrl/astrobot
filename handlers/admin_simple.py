@@ -13,6 +13,7 @@ from database.postgres_db import (
     reset_all_ai_usage, get_total_ai_usage_today, get_top_ai_users,
     get_ai_history, count_ai_history,
     clean_time_dependent_cache, clean_old_ai_history_v2, get_ai_cache_stats,
+    is_admin,
 )
 from datetime import datetime, timedelta
 import logging
@@ -89,7 +90,7 @@ async def show_admin_panel(target, edit: bool = True):
 
 @router.message(Command("admin"))
 async def admin_command(message: Message):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         await message.answer("❌ Нет доступа")
         return
     await show_admin_panel(message)
@@ -97,7 +98,7 @@ async def admin_command(message: Message):
 
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel_callback(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await show_admin_panel(callback)
 
@@ -112,7 +113,7 @@ async def admin_back(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_cache")
 async def admin_cache(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     stats = await get_ai_cache_stats()
 
@@ -144,7 +145,7 @@ async def admin_cache(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cache_clear_temp")
 async def cache_clear_temp(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await clean_time_dependent_cache()
     await callback.answer("✅ Временные удалены", show_alert=True)
@@ -153,7 +154,7 @@ async def cache_clear_temp(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cache_clear_old")
 async def cache_clear_old(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await clean_old_ai_history_v2(14)
     await callback.answer("✅ Старые (>14д) удалены", show_alert=True)
@@ -162,7 +163,7 @@ async def cache_clear_old(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cache_clear_all")
 async def cache_clear_all_confirm(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ ДА, ОЧИСТИТЬ ВСЁ", callback_data="cache_clear_all_do")],
@@ -176,7 +177,7 @@ async def cache_clear_all_confirm(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cache_clear_all_do")
 async def cache_clear_all_do(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     pool = await db.create_pool()
     async with pool.acquire() as conn:
@@ -190,7 +191,7 @@ async def cache_clear_all_do(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_ai_history")
 async def admin_ai_history(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     total = await count_ai_history()
     history = await get_ai_history(10)
@@ -219,7 +220,7 @@ async def admin_ai_history(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_ai")
 async def admin_ai(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     limits = await get_ai_limits()
     usage = await get_total_ai_usage_today()
@@ -252,7 +253,7 @@ async def admin_ai(callback: CallbackQuery):
 
 @router.callback_query(F.data == "ai_set_free")
 async def ai_set_free_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     limits = await get_ai_limits()
     await state.set_state(AdminStates.waiting_ai_limit_free)
@@ -263,7 +264,7 @@ async def ai_set_free_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_ai_limit_free)
 async def ai_set_free_save(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
         await state.clear()
@@ -285,7 +286,7 @@ async def ai_set_free_save(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "ai_set_premium")
 async def ai_set_premium_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     limits = await get_ai_limits()
     await state.set_state(AdminStates.waiting_ai_limit_premium)
@@ -296,7 +297,7 @@ async def ai_set_premium_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_ai_limit_premium)
 async def ai_set_premium_save(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
         await state.clear()
@@ -318,7 +319,7 @@ async def ai_set_premium_save(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "ai_reset_all")
 async def ai_reset_all_confirm(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да", callback_data="ai_reset_do")],
@@ -332,7 +333,7 @@ async def ai_reset_all_confirm(callback: CallbackQuery):
 
 @router.callback_query(F.data == "ai_reset_do")
 async def ai_reset_do(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await reset_all_ai_usage()
     await callback.answer("✅ Сброшено", show_alert=True)
@@ -344,7 +345,7 @@ async def ai_reset_do(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_trial")
 async def admin_trial(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     trial = await get_trial()
     used_count = await count_trial_used()
@@ -365,7 +366,7 @@ async def admin_trial(callback: CallbackQuery):
 
 @router.callback_query(F.data == "trial_toggle")
 async def trial_toggle(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     trial = await get_trial()
     new_enabled = not trial.get("enabled", True)
@@ -376,7 +377,7 @@ async def trial_toggle(callback: CallbackQuery):
 
 @router.callback_query(F.data == "trial_change_days")
 async def trial_change_days_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     trial = await get_trial()
     await state.set_state(AdminStates.waiting_trial_days)
@@ -387,7 +388,7 @@ async def trial_change_days_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_trial_days)
 async def trial_set_days(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
         await state.clear()
@@ -409,7 +410,7 @@ async def trial_set_days(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "trial_reset")
 async def trial_reset_confirm(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     used = await count_trial_used()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -421,7 +422,7 @@ async def trial_reset_confirm(callback: CallbackQuery):
 
 @router.callback_query(F.data == "trial_reset_do")
 async def trial_reset_do(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await reset_all_trials()
     await callback.answer("✅ Сброшено", show_alert=True)
@@ -433,7 +434,7 @@ async def trial_reset_do(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_pricing")
 async def admin_pricing(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     pricing = await get_pricing()
     text = "💰 ЦЕНЫ\n\n"
@@ -452,7 +453,7 @@ async def admin_pricing(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("price_edit_"))
 async def price_edit_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     plan = callback.data.replace("price_edit_", "")
     await state.update_data(plan=plan)
@@ -462,7 +463,7 @@ async def price_edit_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_price_days)
 async def price_edit_days(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
         await state.clear()
@@ -482,7 +483,7 @@ async def price_edit_days(message: Message, state: FSMContext):
 
 @router.message(AdminStates.waiting_price_stars)
 async def price_edit_stars(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
         await state.clear()
@@ -509,7 +510,7 @@ async def price_edit_stars(message: Message, state: FSMContext):
 # ============================================================
 @router.callback_query(F.data == "admin_balance")
 async def admin_balance(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     stats = await get_stats()
     text = (
@@ -530,7 +531,7 @@ async def admin_balance(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_withdraw")
 async def admin_withdraw(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     text = (
         "💸 ВЫВОД\n\n"
@@ -552,9 +553,11 @@ async def admin_withdraw(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
+    from database.postgres_db import get_tariff_stats
     stats = await get_stats()
+    tariffs = await get_tariff_stats()
     ai_usage = await get_total_ai_usage_today()
     pool = await db.create_pool()
     async with pool.acquire() as conn:
@@ -564,8 +567,14 @@ async def admin_stats(callback: CallbackQuery):
     text = (
         f"📊 СТАТИСТИКА\n\n"
         f"👥 Всего: {stats['total_users']}\n"
-        f"🆕 За 7 дней: {new_week or 0}\n"
-        f"💎 Платных: {stats['paid_users']}\n\n"
+        f"🆕 За 7 дней: {new_week or 0}\n\n"
+        f"📋 ПО ТАРИФАМ:\n"
+        f"  • 🆓 Бесплатных: {tariffs['free']}\n"
+        f"  • 🎁 На триале: {tariffs['trial']}\n"
+        f"  • 📅 7 дней: {tariffs['7d']}\n"
+        f"  • 📅 30 дней: {tariffs['30d']}\n"
+        f"  • 📅 90 дней: {tariffs['90d']}\n"
+        f"  • 👑 Админов: {tariffs['admins']}\n\n"
         f"📈 Запросов: {total_req or 0}\n"
         f"📅 Сегодня: {today_req or 0}\n"
         f"🤖 AI сегодня: {ai_usage}\n\n"
@@ -586,7 +595,7 @@ async def admin_stats(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_users")
 async def admin_users(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     pool = await db.create_pool()
     async with pool.acquire() as conn:
@@ -612,7 +621,7 @@ async def admin_users(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_search_user")
 async def admin_search_user(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await callback.message.edit_text("🔍 Введите ID:")
     await state.set_state(AdminStates.waiting_search)
@@ -620,7 +629,7 @@ async def admin_search_user(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_search)
 async def process_user_search(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     try:
         user_id = int(message.text.strip())
@@ -650,7 +659,7 @@ async def process_user_search(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("reset_trial_"))
 async def reset_user_trial(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     user_id = int(callback.data.split("_")[2])
     pool = await db.create_pool()
@@ -664,7 +673,7 @@ async def reset_user_trial(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_subs")
 async def admin_subs(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     today = datetime.now().strftime("%Y-%m-%d")
     next_week = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
@@ -692,7 +701,7 @@ async def admin_subs(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_give_sub")
 async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await callback.message.edit_text("➕ Введите ID:")
     await state.set_state(AdminStates.waiting_user_id)
@@ -700,7 +709,7 @@ async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_user_id)
 async def process_user_id_for_sub(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     try:
         user_id = int(message.text.strip())
@@ -726,7 +735,7 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("sub_"))
 async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     days_map = {"sub_7": 7, "sub_30": 30, "sub_90": 90, "sub_365": 365}
     days = days_map.get(callback.data, 7)
@@ -747,7 +756,7 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("add_sub_"))
 async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     user_id = int(callback.data.split("_")[2])
     await state.update_data(user_id=user_id)
@@ -767,7 +776,7 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
 # ============================================================
 @router.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     await callback.message.edit_text("📢 Введите текст рассылки:\n\n/cancel — отмена")
     await state.set_state(AdminStates.waiting_broadcast)
@@ -775,7 +784,7 @@ async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_broadcast)
 async def process_broadcast(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMINS:
+    if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
         await state.clear()
@@ -805,7 +814,7 @@ async def process_broadcast(message: Message, state: FSMContext):
 # ============================================================
 @router.callback_query(F.data == "admin_reminders")
 async def admin_reminders(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_reminder_settings
     settings = await get_reminder_settings()
@@ -836,7 +845,7 @@ async def admin_reminders(callback: CallbackQuery):
 
 @router.callback_query(F.data == "reminders_toggle")
 async def reminders_toggle(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_reminder_settings, set_reminder_settings
     settings = await get_reminder_settings()
@@ -848,7 +857,7 @@ async def reminders_toggle(callback: CallbackQuery):
 
 @router.callback_query(F.data == "reminders_test")
 async def reminders_test(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     try:
         from services.reminder import send_test_reminder
@@ -868,7 +877,7 @@ async def reminders_test(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_cleanup")
 async def admin_cleanup(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_cache_cleanup_settings, get_ai_cache_stats
     settings = await get_cache_cleanup_settings()
@@ -902,7 +911,7 @@ async def admin_cleanup(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cleanup_toggle")
 async def cleanup_toggle(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_cache_cleanup_settings, set_cache_cleanup_settings
     settings = await get_cache_cleanup_settings()
@@ -914,7 +923,7 @@ async def cleanup_toggle(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cleanup_now")
 async def cleanup_now(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     try:
         from database.postgres_db import auto_clean_cache
@@ -931,7 +940,7 @@ async def cleanup_now(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_daily_facts")
 async def admin_daily_facts(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import (
         get_daily_fact_settings, get_today_fact, get_fact_history,
@@ -973,7 +982,7 @@ async def admin_daily_facts(callback: CallbackQuery):
 
 @router.callback_query(F.data == "daily_facts_toggle")
 async def daily_facts_toggle(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_daily_fact_settings, set_daily_fact_settings
     settings = await get_daily_fact_settings()
@@ -985,7 +994,7 @@ async def daily_facts_toggle(callback: CallbackQuery):
 
 @router.callback_query(F.data == "daily_facts_test")
 async def daily_facts_test(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     try:
         from services.daily_facts import send_test_fact
@@ -999,7 +1008,7 @@ async def daily_facts_test(callback: CallbackQuery):
 
 @router.callback_query(F.data == "daily_facts_regen")
 async def daily_facts_regen(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     try:
         from services.daily_facts import generate_fact
@@ -1019,7 +1028,7 @@ async def daily_facts_regen(callback: CallbackQuery):
 
 @router.callback_query(F.data == "daily_facts_history")
 async def daily_facts_history(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_fact_history
     history = await get_fact_history()
@@ -1050,7 +1059,7 @@ class AdminManageStates(StatesGroup):
 
 @router.callback_query(F.data == "admin_manage_admins")
 async def admin_manage_admins(callback: CallbackQuery):
-    if callback.from_user.id not in ADMINS:
+    if not await is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
 

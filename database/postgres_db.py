@@ -106,6 +106,14 @@ async def init_postgres_db():
             )
         """)
 
+        # --- MIGRATION: колонка days в payments ---
+        try:
+            await conn.execute(
+                "ALTER TABLE payments ADD COLUMN IF NOT EXISTS days INTEGER DEFAULT 0"
+            )
+        except Exception as e:
+            logger.warning(f"Миграция payments.days: {e}")
+
         # --- REQUESTS ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS requests (
@@ -1564,3 +1572,82 @@ async def migrate_ads_link_mode():
             )
         except Exception as e:
             logger.warning(f"migrate_ads_link_mode: {e}")
+
+
+# ============================================================
+# СТАТИСТИКА ПО ТАРИФАМ
+# ============================================================
+async def get_tariff_stats() -> dict:
+    """
+    Возвращает разбивку пользователей по тарифам.
+    - free: ни разу не платили
+    - trial: на триале (is_paid=TRUE, но нет платежей)
+    - 7d/30d/90d: последний платёж был на этот срок
+    - admins: админы
+    """
+    from config import ADMINS as MAIN_ADMINS
+    extra = await get_extra_admins()
+    all_admins = set(MAIN_ADMINS + extra)
+
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        # Все пользователи
+        rows = await conn.fetch("""
+            SELECT 
+                user_id,
+                is_paid,
+                subscription_end,
+                (SELECT days FROM payments 
+                 WHERE user_id = users.user_id 
+                 ORDER BY created_at DESC LIMIT 1) as last_days,
+                (SELECT COUNT(*) FROM payments 
+                 WHERE user_id = users.user_id) as pay_count
+            FROM users
+        """)
+
+    result = {
+        "total": len(rows),
+        "admins": 0,
+        "free": 0,
+        "trial": 0,
+        "7d": 0,
+        "30d": 0,
+        "90d": 0,
+        "other": 0,
+    }
+
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    for r in rows:
+        uid = r["user_id"]
+        if uid in all_admins:
+            result["admins"] += 1
+            continue
+
+        if not r["is_paid"]:
+            result["free"] += 1
+            continue
+
+        # Подписка активна?
+        sub_end = r["subscription_end"]
+        if sub_end and sub_end < today:
+            result["free"] += 1
+            continue
+
+        # Есть ли платежи?
+        if r["pay_count"] == 0:
+            result["trial"] += 1
+            continue
+
+        last_days = r["last_days"] or 0
+        if last_days == 7:
+            result["7d"] += 1
+        elif last_days == 30:
+            result["30d"] += 1
+        elif last_days == 90:
+            result["90d"] += 1
+        else:
+            result["other"] += 1
+
+    return result
