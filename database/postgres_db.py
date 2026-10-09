@@ -205,6 +205,9 @@ async def init_postgres_db():
     # --- Инициализация дневника настроения ---
     await init_mood_table()
 
+    # --- Инициализация Таро ---
+    await init_tarot_table()
+
     # --- Инициализация рефералов ---
     await init_referrals_table()
 
@@ -1651,3 +1654,71 @@ async def get_tariff_stats() -> dict:
             result["other"] += 1
 
     return result
+
+
+# ============================================================
+# ТАРО — КЭШ РАСКЛАДОВ
+# ============================================================
+async def init_tarot_table():
+    """Создаёт таблицу tarot_readings."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS tarot_readings (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                question TEXT NOT NULL,
+                cache_key TEXT NOT NULL,
+                reading_date DATE NOT NULL,
+                cards JSONB NOT NULL,
+                ai_answer TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (cache_key)
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tarot_user ON tarot_readings(user_id)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tarot_date ON tarot_readings(reading_date)
+        """)
+    logger.info("✅ Таблица tarot_readings создана/проверена")
+
+
+async def get_tarot_reading(cache_key: str):
+    """Возвращает расклад по ключу кэша или None."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT cards, ai_answer, reading_date
+            FROM tarot_readings
+            WHERE cache_key = $1
+        """, cache_key)
+        return dict(row) if row else None
+
+
+async def save_tarot_reading(user_id: int, question: str, cache_key: str,
+                              cards: list, ai_answer: str):
+    """Сохраняет расклад в БД."""
+    import json
+    from datetime import date
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO tarot_readings (user_id, question, cache_key, reading_date, cards, ai_answer)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (cache_key) DO NOTHING
+        """, user_id, question, cache_key, today, json.dumps(cards, ensure_ascii=False), ai_answer)
+
+
+async def count_tarot_today() -> int:
+    """Сколько раскладов сделано сегодня."""
+    from datetime import date
+    today = date.today()
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM tarot_readings WHERE reading_date = $1", today
+        )
+    return count or 0
