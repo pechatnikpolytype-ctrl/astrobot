@@ -16,6 +16,7 @@ from database.postgres_db import init_postgres_db
 
 # --- Импорт роутеров ---
 from handlers.start import router as start_router
+from handlers.tarot import router as tarot_router
 from handlers.menu_commands import router as menu_router
 from handlers.mood_diary import router as mood_router
 from handlers.admin_ads import router as ads_router
@@ -46,6 +47,7 @@ async def main():
     dp = Dispatcher()
 
     dp.include_router(start_router)
+    dp.include_router(tarot_router)
     dp.include_router(ads_router)
     dp.include_router(mood_router)
     dp.include_router(menu_router)

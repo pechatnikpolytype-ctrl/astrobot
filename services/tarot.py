@@ -109,6 +109,14 @@ async def _generate_ai_reading(user_id: int, question: str, cards: list) -> str:
         context_parts.append(f"О себе: {user['bio']}")
     if user.get("goals"):
         context_parts.append(f"Цели: {user['goals']}")
+
+    # Семейное положение — ВАЖНО
+    rel = (user.get("relationship_status") or "").strip()
+    if rel:
+        context_parts.append(f"Семейное положение: {rel}")
+    else:
+        context_parts.append("Семейное положение: НЕ УКАЗАНО (не предполагай наличие партнёра)")
+
     context = "\n".join(context_parts) if context_parts else ""
 
     system_prompt = (
@@ -122,16 +130,24 @@ async def _generate_ai_reading(user_id: int, question: str, cards: list) -> str:
         "- НЕ предсказывай точные даты\n"
         "- НЕ давай медицинских/юридических советов\n"
         "- В конце — небольшой совет\n"
+        "ВАЖНО:\n"
+        "- Учитывай СЕМЕЙНОЕ ПОЛОЖЕНИЕ из контекста\n"
+        "- Если у пользователя НЕТ партнёра — НЕ говори про 'партнёра', "
+        "говори про 'будущие отношения' или 'потенциального партнёра'\n"
+        "- Если партнёр ЕСТЬ — говори про отношения\n"
+        "- Если НЕ УКАЗАНО — пиши нейтрально (без предположений)\n"
     )
 
-    user_prompt = f"""Вопрос пользователя: {question}
+    context_block = ""
+    if context:
+        context_block = "Контекст о пользователе:\n" + context
 
-Выпавшие карты:
-{cards_text}
-
-{("Контекст о пользователе:\n" + context) if context else ""}
-
-Дай развёрнутое толкование расклада для этого вопроса."""
+    user_prompt = (
+        f"Вопрос пользователя: {question}\n\n"
+        f"Выпавшие карты:\n{cards_text}\n\n"
+        f"{context_block}\n\n"
+        f"Дай развёрнутое толкование расклада для этого вопроса."
+    )
 
     answer = await ai_service._query_ai(system_prompt, user_prompt, max_tokens=800)
     if answer:
@@ -143,6 +159,43 @@ async def _generate_ai_reading(user_id: int, question: str, cards: list) -> str:
 # ============================================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================================
+
+
+# ============================================================
+# УМНЫЕ ПОЗИЦИИ ПО ТИПУ ВОПРОСА
+# ============================================================
+def get_positions(question: str) -> list:
+    """Возвращает список позиций карт в зависимости от вопроса."""
+    q = question.lower()
+
+    # Любовь / отношения
+    if any(w in q for w in ["любов", "отношени", "партнёр", "партнер",
+                              "девушк", "парн", "жен", "муж", "брак", "свидан"]):
+        return ["💔 Что мешает", "💖 Что поможет", "✨ Перспектива"]
+
+    # Работа / карьера / деньги
+    if any(w in q for w in ["работ", "карьер", "деньг", "бизнес",
+                              "проект", "начальник", "коллег", "зарплат"]):
+        return ["📉 Прошлое", "📊 Настоящее", "🚀 Будущее"]
+
+    # Здоровье
+    if any(w in q for w in ["здоров", "самочувств", "болезн", "энерг"]):
+        return ["🌿 Что беспокоит", "💊 Что поможет", "✨ Перспектива"]
+
+    # Что ждёт / будущее (общий)
+    if any(w in q for w in ["ждёт", "ждет", "будет", "будущ", "перспектив",
+                              "случит", "произойд", "впереди"]):
+        return ["🕐 Ближайшее", "📅 Среднесрочное", "🔮 Дальнее"]
+
+    # Совет / как поступить
+    if any(w in q for w in ["совет", "поступ", "решен", "стоит ли", "как быть",
+                              "что делать", "помог"]):
+        return ["⚡ Сейчас", "💡 Совет", "🌟 Итог"]
+
+    # По умолчанию
+    return ["🕐 Прошлое", "🕐 Настоящее", "🕐 Будущее"]
+
+
 async def get_or_create_reading(user_id: int, question: str, count: int = 3) -> dict:
     """
     Возвращает расклад для вопроса.
@@ -159,9 +212,17 @@ async def get_or_create_reading(user_id: int, question: str, count: int = 3) -> 
     # Проверяем кэш
     existing = await get_tarot_reading(cache_key)
     if existing:
+        import json as _json
+        cards_cached = existing["cards"]
+        # Если карты пришли как строка — декодируем
+        if isinstance(cards_cached, str):
+            try:
+                cards_cached = _json.loads(cards_cached)
+            except Exception:
+                cards_cached = []
         return {
             "from_cache": True,
-            "cards": existing["cards"],
+            "cards": cards_cached,
             "ai_answer": existing["ai_answer"],
             "question": question,
         }
