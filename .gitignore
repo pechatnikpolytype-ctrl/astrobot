@@ -65,3 +65,7 @@ CLEAN_BUILD_LOG.txt
 download_files*.py
 fix_*.py
 test_*.py
+
+# === Бэкапы файлов ===
+*.bak*
+
