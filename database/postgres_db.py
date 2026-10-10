@@ -1739,13 +1739,23 @@ async def count_tarot_today() -> int:
 # МУЛЬТИЯЗЫЧНОСТЬ
 # ============================================================
 async def update_user_language(user_id: int, lang: str):
-    """Сохраняет язык пользователя."""
+    """Сохраняет язык пользователя и сбрасывает оба кэша."""
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE users SET language = $1 WHERE user_id = $2",
             lang, user_id
         )
+    # Инвалидация кэшей
+    try:
+        _lang_cache.pop(user_id, None)
+    except Exception:
+        pass
+    try:
+        from services.cache import user_cache
+        user_cache.delete(f"user_{user_id}")
+    except Exception:
+        pass
 
 
 async def get_user_language(user_id: int) -> str:
@@ -1760,3 +1770,25 @@ async def get_user_language(user_id: int) -> str:
         return val or "ru"
     except Exception:
         return "ru"
+
+# ============================================================
+# КЭШ ЯЗЫКА (in-memory, TTL 5 мин)
+# ============================================================
+_lang_cache: dict = {}
+
+
+async def get_user_lang_cached(user_id: int) -> str:
+    """Возвращает язык пользователя с кэшем 5 минут."""
+    import time
+    now = time.time()
+    entry = _lang_cache.get(user_id)
+    if entry and entry[1] > now:
+        return entry[0]
+    lang = await get_user_language(user_id)
+    _lang_cache[user_id] = (lang, now + 300)
+    return lang
+
+
+def invalidate_lang_cache(user_id: int):
+    """Сбрасывает кэш языка пользователя."""
+    _lang_cache.pop(user_id, None)

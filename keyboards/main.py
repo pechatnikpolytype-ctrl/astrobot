@@ -1,110 +1,126 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
 from database.postgres_db import get_pricing
+from locales import t
 
 
-async def welcome_keyboard():
+async def welcome_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="🚀 Продолжить", callback_data="check_status")
+    kb.button(text=t("BTN_CONTINUE", lang), callback_data="check_status")
     return kb.as_markup()
 
 
-async def payment_keyboard():
+async def payment_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
     pricing = await get_pricing()
     for plan, info in pricing.items():
         kb.button(
-            text=f"🔥 {info['days']} дней — {info['stars']}⭐",
-            callback_data=f"pay_{plan}"
+            text=t("PAY_BUTTON", lang, days=info["days"], stars=info["stars"]),
+            callback_data=f"pay_{plan}",
         )
     kb.adjust(1)
     return kb.as_markup()
 
 
-def main_menu_keyboard(user_id):
+def main_menu_keyboard(user_id, lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔮 Натальная карта", callback_data="natal_chart")
-    kb.button(text="✨ Личный вопрос", callback_data="ai_question")
-    kb.button(text="🌙 Гороскоп дня", callback_data="daily_horoscope")
-    kb.button(text="💕 Совместимость", callback_data="compatibility")
-    kb.button(text="👤 Профиль", callback_data="profile")
-    kb.button(text="📔 Дневник", callback_data="mood_diary")
-    kb.button(text="🃏 Таро", callback_data="tarot_menu")
-    kb.button(text="📄 PDF отчёт", callback_data="generate_pdf")
-    kb.button(text="🌐 Язык", callback_data="lang_menu")
+    kb.button(text=t("BTN_NATAL", lang), callback_data="natal_chart")
+    kb.button(text=t("BTN_AI", lang), callback_data="ai_question")
+    kb.button(text=t("BTN_HOROSCOPE", lang), callback_data="daily_horoscope")
+    kb.button(text=t("BTN_COMPAT", lang), callback_data="compatibility")
+    kb.button(text=t("BTN_PROFILE", lang), callback_data="profile")
+    kb.button(text=t("BTN_DIARY", lang), callback_data="mood_diary")
+    kb.button(text=t("BTN_TAROT", lang), callback_data="tarot_menu")
+    kb.button(text=t("BTN_PDF", lang), callback_data="generate_pdf")
+    kb.button(text=t("BTN_LANG", lang), callback_data="lang_menu")
     from config import ADMINS
     if user_id in ADMINS:
-        kb.button(text="👑 Админ-панель", callback_data="admin_panel")
+        kb.button(text=t("BTN_ADMIN", lang), callback_data="admin_panel")
     kb.adjust(2)
     return kb.as_markup()
 
 
-def natal_options_keyboard():
+def natal_options_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="📝 Ввести данные", callback_data="natal_input")
-    kb.button(text="🔙 Назад", callback_data="main_menu")
+    kb.button(text="📝 " + ("Ввести данные" if lang == "ru" else
+                            "Enter data" if lang == "en" else
+                            "Daten eingeben"), callback_data="natal_input")
+    kb.button(text=t("BTN_BACK", lang), callback_data="main_menu")
     return kb.as_markup()
 
 
-def ai_question_keyboard():
-    """Кнопки для меню AI-вопросов (до начала диалога)."""
+def ai_question_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="💭 Задать вопрос", callback_data="ask_ai")
-    kb.button(text="📝 Примеры", callback_data="ai_examples")
-    kb.button(text="🔙 Главное меню", callback_data="main_menu")
+    labels = {
+        "ru": ("💭 Задать вопрос", "📝 Примеры"),
+        "en": ("💭 Ask a question", "📝 Examples"),
+        "de": ("💭 Frage stellen", "📝 Beispiele"),
+    }
+    ask, examples = labels.get(lang, labels["ru"])
+    kb.button(text=ask, callback_data="ask_ai")
+    kb.button(text=examples, callback_data="ai_examples")
+    kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
     kb.adjust(1)
     return kb.as_markup()
 
 
-def ai_dialog_keyboard():
-    """Кнопки во время диалога с AI (после каждого ответа)."""
+def ai_dialog_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔚 Закончить диалог", callback_data="ai_end_dialog")
-    kb.button(text="📝 Примеры вопросов", callback_data="ai_examples")
+    labels = {
+        "ru": ("🔚 Закончить диалог", "📝 Примеры вопросов"),
+        "en": ("🔚 End dialogue", "📝 Question examples"),
+        "de": ("🔚 Dialog beenden", "📝 Fragebeispiele"),
+    }
+    end, examples = labels.get(lang, labels["ru"])
+    kb.button(text=end, callback_data="ai_end_dialog")
+    kb.button(text=examples, callback_data="ai_examples")
     kb.adjust(1)
     return kb.as_markup()
 
 
-def compatibility_keyboard():
+def compatibility_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="💑 Анализ", callback_data="compat_analyze")
-    kb.button(text="🔙 Назад", callback_data="main_menu")
+    analyze = {"ru": "💑 Анализ", "en": "💑 Analyze", "de": "💑 Analyse"}.get(lang, "💑 Анализ")
+    kb.button(text=analyze, callback_data="compat_analyze")
+    kb.button(text=t("BTN_BACK", lang), callback_data="main_menu")
     return kb.as_markup()
 
 
-def profile_keyboard():
+def profile_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="📝 Редактировать", callback_data="profile_edit")
-    kb.button(text="🔙 Главное меню", callback_data="main_menu")
+    edit = {"ru": "📝 Редактировать", "en": "📝 Edit", "de": "📝 Bearbeiten"}.get(lang, "📝 Редактировать")
+    kb.button(text=edit, callback_data="profile_edit")
+    kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
     return kb.as_markup()
 
 
-def pdf_type_keyboard():
+def pdf_type_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔮 Натальная карта", callback_data="pdf_natal")
-    kb.button(text="🌙 Гороскоп", callback_data="pdf_horoscope")
-    kb.button(text="🔙 Назад", callback_data="main_menu")
+    labels = {
+        "ru": ("🔮 Натальная карта", "🌙 Гороскоп"),
+        "en": ("🔮 Natal chart", "🌙 Horoscope"),
+        "de": ("🔮 Geburtshoroskop", "🌙 Horoskop"),
+    }
+    natal, horo = labels.get(lang, labels["ru"])
+    kb.button(text=natal, callback_data="pdf_natal")
+    kb.button(text=horo, callback_data="pdf_horoscope")
+    kb.button(text=t("BTN_BACK", lang), callback_data="main_menu")
     return kb.as_markup()
 
 
-def back_to_menu_keyboard():
+def back_to_menu_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔙 Главное меню", callback_data="main_menu")
+    kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
     return kb.as_markup()
 
 
-
-# ============================================================
-# REPLY-КЛАВИАТУРА (постоянная, внизу)
-# ============================================================
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
-
-def main_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Постоянная reply-клавиатура с кнопкой '🏠 Меню'."""
+def main_reply_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Постоянная reply-клавиатура с кнопкой Меню."""
     kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        keyboard=[[KeyboardButton(text=t("BTN_MENU", lang))]],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Напишите сообщение или нажмите 🏠 Меню",
+        input_field_placeholder=t("MENU_INPUT_PLACEHOLDER", lang),
     )
     return kb

@@ -28,9 +28,10 @@ def _lang_keyboard(current: str):
 
 
 async def _get_user_lang(user_id: int) -> str:
+    """Свежий язык из БД (через кэш)."""
     try:
-        user = await get_user(user_id)
-        return (user or {}).get("language") or "ru"
+        from database.postgres_db import get_user_lang_cached
+        return await get_user_lang_cached(user_id)
     except Exception:
         return "ru"
 
