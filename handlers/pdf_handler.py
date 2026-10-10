@@ -22,7 +22,7 @@ async def pdf_menu(callback: CallbackQuery):
     text = (
         "📄 PDF ОТЧЁТЫ\n\n"
         "Выберите тип отчёта:\n\n"
-        "🔮 Натальная карта — полный разбор с AI-анализом\n"
+        "🔮 Натальная карта — полный астрологический разбор\n"
         "🌙 Личный гороскоп — прогноз на сегодня"
     )
     try:
@@ -67,7 +67,7 @@ async def pdf_natal(callback: CallbackQuery):
         logger.info(f"✅ Натальная карта создана для {name}")
 
         # 2. AI-интерпретация
-        await msg.edit_text("🤖 AI анализирует карту...")
+        await msg.edit_text("🔮 Астролог анализирует карту...")
         try:
             ai_text = await natal_service.generate_ai_report(chart_data)
             chart_data["ai_interpretation"] = (ai_text or "")[:1500]

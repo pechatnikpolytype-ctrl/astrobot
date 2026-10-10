@@ -233,7 +233,7 @@ async def process_partner2(message: Message, state: FSMContext):
     p1 = data["p1"]
     await state.clear()
 
-    processing_msg = await message.answer("🔮 AI анализирует совместимость...")
+    processing_msg = await message.answer("🔮 Астролог анализирует совместимость...")
 
     # Ключ кэша
     cache_key = build_cache_key(p1, p2)

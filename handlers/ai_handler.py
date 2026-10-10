@@ -31,13 +31,13 @@ async def ai_question_menu(callback: CallbackQuery):
     usage = await get_ai_usage(user_id)
 
     if limit == -1:
-        limit_text = "🤖 AI-лимит: ♾️ без лимита"
+        limit_text = "🔮 Осталось вопросов: ♾️ без лимита"
     else:
         left = max(0, limit - usage)
-        limit_text = f"🤖 AI-лимит: осталось {left}/{limit}"
+        limit_text = f"🔮 Осталось вопросов: {left}/{limit}"
 
     text = (
-        "🤖 АСТРОЛОГ AI\n\n"
+        "🔮 АСТРОЛОГ\n\n"
         "Задайте любой вопрос о гороскопах, знаках зодиака, "
         "совместимости или влиянии планет!\n\n"
         "📝 Примеры:\n"
@@ -45,7 +45,7 @@ async def ai_question_menu(callback: CallbackQuery):
         "  • Какая совместимость у Льва и Скорпиона?\n"
         "  • Как ретроградный Меркурий влияет на меня?\n\n"
         f"{limit_text}\n\n"
-        "💡 AI знает ваш профиль и отвечает персонально!\n\n"
+        "💡 Астролог знает ваш профиль и отвечает персонально!\n\n"
         "💬 После ответа вы можете задавать ещё вопросы "
         "без нажатия кнопок — просто пишите.\n"
         "Когда закончите — нажмите «🔚 Закончить диалог»."
@@ -70,7 +70,7 @@ async def start_ai_question(callback: CallbackQuery, state: FSMContext):
         ])
         try:
             await callback.message.edit_text(
-                "⚠️ AI-ЛИМИТ ИСЧЕРПАН\n\n"
+                "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
                 f"Вы задали {usage}/{limit} вопросов сегодня.\n"
                 "Лимит обновится в 00:00 UTC.\n\n"
                 "💎 Купите Премиум — 100 запросов/день.",
@@ -78,7 +78,7 @@ async def start_ai_question(callback: CallbackQuery, state: FSMContext):
             )
         except Exception:
             await callback.message.answer(
-                "⚠️ AI-ЛИМИТ ИСЧЕРПАН\n\n"
+                "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
                 f"Вы задали {usage}/{limit} вопросов сегодня.",
                 reply_markup=keyboard
             )
@@ -136,7 +136,7 @@ async def process_ai_question(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
         ])
         await message.answer(
-            "⚠️ AI-ЛИМИТ ИСЧЕРПАН\n\n"
+            "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
             f"Вы задали {usage}/{limit} вопросов сегодня.\n"
             "Лимит обновится в 00:00 UTC.",
             reply_markup=keyboard
@@ -144,13 +144,13 @@ async def process_ai_question(message: Message, state: FSMContext):
         return
 
     # Сообщение о обработке
-    processing_msg = await message.answer("🔮 Астролог AI анализирует ваш вопрос...")
+    processing_msg = await message.answer("🔮 Астролог анализирует ваш вопрос...")
 
     async def update_thinking():
         await asyncio.sleep(3)
         try:
             await processing_msg.edit_text(
-                "🤖 AI ДУМАЕТ...\n\n"
+                "🔮 Астролог думает...\n\n"
                 "Это может занять 10-30 секунд.\n"
                 "Пожалуйста, подождите."
             )
@@ -193,7 +193,7 @@ async def process_ai_question(message: Message, state: FSMContext):
             if left <= 5 and left > 0:
                 await message.answer(f"⚠️ У вас осталось {left} запросов на сегодня.")
             elif left == 0:
-                await message.answer("⚠️ AI-лимит исчерпан на сегодня.")
+                await message.answer("⚠️ Лимит вопросов исчерпан на сегодня.")
 
         # Факты
         if facts:
@@ -205,7 +205,7 @@ async def process_ai_question(message: Message, state: FSMContext):
                 await show_facts_confirmation(message, state, new_facts)
             else:
                 await message.answer(
-                    "✅ AI заметил, что вы уже рассказывали об этом ранее."
+                    "✅ Астролог заметил, что вы уже рассказывали об этом ранее."
                 )
         else:
             q_lower = message.text.lower()
@@ -216,7 +216,7 @@ async def process_ai_question(message: Message, state: FSMContext):
                     [InlineKeyboardButton(text="🔚 Закончить диалог", callback_data="ai_end_dialog")],
                 ])
                 await message.answer(
-                    "💡 Хотите, чтобы AI знал о вас больше?\n\n"
+                    "💡 Хотите, чтобы астролог знал о вас больше?\n\n"
                     "Заполните профиль — и ответы станут точнее.",
                     reply_markup=keyboard
                 )
@@ -247,7 +247,7 @@ async def ai_end_dialog(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     try:
         await callback.message.edit_text(
-            "✅ Диалог с AI завершён.\n\n"
+            "✅ Диалог завершён.\n\n"
             "Возвращайтесь, когда появятся вопросы! 🌟",
             reply_markup=main_menu_keyboard(user_id)
         )
@@ -270,7 +270,7 @@ async def show_facts_confirmation(message: Message, state: FSMContext, facts: li
 
     keyboard = _build_facts_keyboard(facts, list(range(len(facts))))
     await message.answer(
-        "🧠 AI ХОЧЕТ ЗАПОМНИТЬ О ВАС\n\n"
+        "✨ АСТРОЛОГ ХОЧЕТ ЗАПОМНИТЬ О ВАС\n\n"
         "Нажмите на факт, чтобы выбрать/убрать.\n"
         "Затем нажмите «💾 Сохранить».",
         reply_markup=keyboard
@@ -338,7 +338,7 @@ async def facts_save(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         f"✅ Сохранено {saved} факт(ов).\n\n"
-        "Посмотреть: 👤 Профиль → 🧠 AI-заметки."
+        "Посмотреть: 👤 Профиль → 🧠 Заметки астролога."
     )
 
 

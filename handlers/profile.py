@@ -54,10 +54,10 @@ async def profile_handler(callback: CallbackQuery):
     limit = await get_user_ai_limit(user_id)
     usage = await get_ai_usage(user_id)
     if limit == -1:
-        ai_line = "🤖 AI-лимит: ♾️ без лимита"
+        ai_line = "🔮 Осталось вопросов: ♾️ без лимита"
     else:
         left = max(0, limit - usage)
-        ai_line = f"🤖 AI-лимит: {usage}/{limit}"
+        ai_line = f"🔮 Осталось вопросов: {usage}/{limit}"
 
     text = f"""👤 ВАШ ПРОФИЛЬ
 
@@ -82,7 +82,7 @@ async def profile_handler(callback: CallbackQuery):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Редактировать", callback_data="profile_edit")],
-        [InlineKeyboardButton(text="🧠 AI-заметки", callback_data="profile_notes")],
+        [InlineKeyboardButton(text="🧠 Заметки астролога", callback_data="profile_notes")],
         [InlineKeyboardButton(text="🔗 Пригласи друга", callback_data="profile_referral")],
         [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
     ])
@@ -351,10 +351,10 @@ async def profile_notes(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="profile")],
         ])
-        await callback.message.edit_text("🧠 AI-ЗАМЕТКИ\n\nПока пусто.", reply_markup=keyboard)
+        await callback.message.edit_text("🧠 ЗАМЕТКИ АСТРОЛОГА\n\nПока пусто.", reply_markup=keyboard)
         return
 
-    text = "🧠 AI-ЗАМЕТКИ О ВАС\n\n"
+    text = "🧠 ЗАМЕТКИ АСТРОЛОГА О ВАС\n\n"
     for i, note in enumerate(notes, 1):
         date = str(note["created_at"])[:10] if note.get("created_at") else "?"
         text += f"{i}. {note['note']} ({date})\n"

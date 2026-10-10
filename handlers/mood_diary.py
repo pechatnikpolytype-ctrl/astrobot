@@ -168,7 +168,7 @@ async def mood_skip_story(callback: CallbackQuery, state: FSMContext):
         # Всё равно можно предложить AI-вопрос, если плохое настроение
         if mood <= 2:
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Поговорить с AI", callback_data="ai_question")],
+                [InlineKeyboardButton(text="💬 Поговорить с астрологом", callback_data="ai_question")],
                 [InlineKeyboardButton(text="📊 Статистика", callback_data="mood_stats")],
                 [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
             ])
@@ -225,7 +225,7 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
         ])
         await message.answer(
-            "⚠️ AI-ЛИМИТ ИСЧЕРПАН\n\n"
+            "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
             f"Вы задали {usage}/{limit} вопросов сегодня.\n"
             "Лимит обновится в 00:00 UTC.\n\n"
             "💎 Купите Премиум — 100 запросов/день.\n\n"
@@ -235,7 +235,7 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
         return
 
     # Отправляем «AI думает»
-    processing = await message.answer("🤖 AI обрабатывает ваш рассказ...")
+    processing = await message.answer("🔮 Астролог обрабатывает ваш рассказ...")
 
     try:
         # 1. AI-ответ (совет) на основе настроения + текста
@@ -307,7 +307,7 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
                 await state.update_data(pending_facts=new_facts, pending_selected=list(range(len(new_facts))))
                 keyboard = _build_facts_keyboard(new_facts, list(range(len(new_facts))))
                 await message.answer(
-                    "🧠 AI хочет запомнить о вас:\n\n"
+                    "✨ Астролог хочет запомнить о вас:\n\n"
                     "Нажмите на факт, чтобы выбрать/убрать.\n"
                     "Затем нажмите «💾 Сохранить».",
                     reply_markup=keyboard,
@@ -387,7 +387,7 @@ async def mood_facts_save(callback: CallbackQuery, state: FSMContext):
             saved += 1
 
     await callback.message.edit_text(
-        f"✅ Сохранено {saved} факт(ов).\n\nПосмотреть: 👤 Профиль → 🧠 AI-заметки."
+        f"✅ Сохранено {saved} факт(ов).\n\nПосмотреть: 👤 Профиль → 🧠 Заметки астролога."
     )
     await callback.message.answer(
         "Хорошего дня! 🌟",

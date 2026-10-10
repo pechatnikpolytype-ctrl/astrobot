@@ -1,0 +1,114 @@
+import asyncio
+import logging
+from datetime import datetime
+from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from database.postgres_db import (
+    get_users_for_reminder, set_last_reminder,
+    should_send_reminder, get_reminder_settings,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# ТЕКСТЫ НАПОМИНАНИЙ (4 варианта)
+# ============================================================
+REMINDER_TEXTS = [
+    "🌟 Хотите более точные прогнозы?\n\n"
+    "Заполните профиль — астролог будет учитывать ваш знак зодиака, "
+    "интересы и цели.\n\n"
+    "Это займёт 2 минуты, а ответы станут гораздо точнее!",
+
+    "💫 Мы заметили, что вы ещё не заполнили профиль.\n\n"
+    "Астрология — это про индивидуальность. Чем больше астролог знает о вас, "
+    "тем точнее его советы.\n\n"
+    "Заполните профиль — и получите персональные прогнозы!",
+
+    "🔮 Ваша натальная карта уникальна!\n\n"
+    "Заполните профиль, чтобы AI учитывал:\n"
+    "  • Ваш знак зодиака\n"
+    "  • Ваши интересы и цели\n"
+    "  • Особенности вашей личности\n\n"
+    "Это сделает прогнозы точнее.",
+
+    "✨ Небольшая просьба 🙏\n\n"
+    "Заполните профиль — это поможет AI отвечать персонально.\n\n"
+    "Вы всегда можете изменить или удалить данные в любой момент.",
+]
+
+
+def _build_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="👤 Заполнить профиль",
+            callback_data="profile_edit"
+        )],
+        [InlineKeyboardButton(
+            text="🔙 Главное меню",
+            callback_data="main_menu"
+        )],
+    ])
+
+
+# ============================================================
+# ОТПРАВКА НАПОМИНАНИЙ
+# ============================================================
+async def send_reminders(bot: Bot):
+    """Отправляет напоминания всем, кому нужно."""
+    settings = await get_reminder_settings()
+    if not settings.get("enabled", True):
+        logger.info("⏸️ Напоминания отключены")
+        return
+
+    users = await get_users_for_reminder(limit=200)
+    if not users:
+        logger.info("✅ Нет пользователей для напоминаний")
+        return
+
+    logger.info(f"🔔 Отправка напоминаний: {len(users)} пользователей")
+
+    import random
+    sent = 0
+    failed = 0
+
+    for user in users:
+        user_id = user["user_id"]
+        try:
+            if not await should_send_reminder(user_id):
+                continue
+
+            text = random.choice(REMINDER_TEXTS)
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=_build_keyboard()
+            )
+            await set_last_reminder(user_id)
+            sent += 1
+
+            # Задержка, чтобы не флудить
+            await asyncio.sleep(0.05)
+
+        except Exception as e:
+            failed += 1
+            logger.debug(f"Напоминание не отправлено {user_id}: {e}")
+
+    logger.info(f"✅ Напоминания: отправлено={sent}, ошибок={failed}")
+
+
+# ============================================================
+# ТЕСТОВОЕ НАПОМИНАНИЕ
+# ============================================================
+async def send_test_reminder(bot: Bot, user_id: int):
+    """Отправляет тестовое напоминание одному пользователю."""
+    import random
+    text = random.choice(REMINDER_TEXTS)
+    try:
+        await bot.send_message(user_id, f"🧪 ТЕСТОВОЕ НАПОМИНАНИЕ:\n\n{text}",
+                               reply_markup=_build_keyboard())
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка тестового напоминания: {e}")
+        return False

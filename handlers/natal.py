@@ -165,7 +165,7 @@ async def natal_finish(message: Message, state: FSMContext):
             pass
 
         # 2. AI-интерпретация (с кэшем)
-        ai_processing = await message.answer("🤖 AI анализирует вашу карту...")
+        ai_processing = await message.answer("🔮 Астролог анализирует вашу карту...")
         try:
             ai_text = await natal_service.generate_ai_report(chart_data)
             if ai_text:

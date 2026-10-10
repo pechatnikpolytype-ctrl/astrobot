@@ -426,7 +426,7 @@ class NatalService:
         ai_text = await self.generate_ai_report(chart_data)
 
         if ai_text:
-            return base + "\n🤖 AI-АНАЛИЗ\n\n" + ai_text
+            return base + "\n🔮 АСТРОЛОГИЧЕСКИЙ АНАЛИЗ\n\n" + ai_text
         else:
             # Fallback — старая шаблонная интерпретация
             sun_sign = chart_data.get("sun_sign", "Неизвестно")
