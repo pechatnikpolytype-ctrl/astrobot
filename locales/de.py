@@ -67,3 +67,122 @@ REFERRAL_NEW_USER = (
     "🎉 Jemand ist über deinen Link beigetreten!\n\n"
     "Du bekommst {bonus_days} Premium-Tage."
 )
+
+# === Phase 2.2: Geburtshoroskop ===
+NATAL_MENU_TITLE = (
+    "🔮 GEBURTSHOROSKOP ERSTELLEN\n\n"
+    "Das Geburtshoroskop ist deine astrologische Geburtskarte.\n"
+    "Es zeigt die Planetenpositionen zu deiner Geburt.\n\n"
+    "Für die Erstellung brauchen wir:\n"
+    "  • Deinen Namen\n"
+    "  • Geburtsdatum\n"
+    "  • Geburtszeit\n"
+    "  • Geburtsort"
+)
+NATAL_BTN_INPUT = "📝 Daten eingeben"
+NATAL_ENTER_NAME = "🌟 GIB DEINEN NAMEN EIN\n\nZum Beispiel: Alexander\n\n/cancel — abbrechen"
+NATAL_ENTER_DATE = (
+    "📅 GIB DEIN GEBURTSDATUM EIN\n\n"
+    "Formate:\n"
+    "  • 15.05.1990\n"
+    "  • 15/05/1990\n"
+    "  • 1990-05-15\n\n"
+    "/cancel — abbrechen"
+)
+NATAL_ENTER_TIME = (
+    "⏰ GIB DEINE GEBURTSZEIT EIN\n\n"
+    "Format: HH:MM\n"
+    "Zum Beispiel: 14:30\n\n"
+    "Wenn unbekannt — schreibe 12:00\n"
+    "/cancel — abbrechen"
+)
+NATAL_ENTER_PLACE = "📍 GIB DEINEN GEBURTSORT EIN\n\nZum Beispiel: Berlin, Deutschland\n\n/cancel — abbrechen"
+NATAL_NAME_SHORT = "❌ Name zu kurz. Mindestens 2 Zeichen."
+NATAL_NAME_LONG = "❌ Name zu lang (max. 50 Zeichen)."
+NATAL_CREATING = "🔮 Erstelle dein Geburtshoroskop...\n\nDas kann 20-30 Sekunden dauern."
+NATAL_AI_ANALYZING = "🔮 Astrologe analysiert deine Karte..."
+NATAL_SCHEME_CAPTION = "🔮 Geburtshoroskop-Schema"
+NATAL_READY = "✨ Geburtshoroskop ist fertig!"
+NATAL_NEED_BIRTH = "❌ Geburtsdaten erforderlich. Erstelle zuerst ein Horoskop."
+NATAL_CANCELLED = "Abgebrochen"
+
+# === Phase 2.2: PDF ===
+PDF_MENU_TITLE = (
+    "📄 PDF-BERICHTE\n\n"
+    "Berichtstyp wählen:\n\n"
+    "🔮 Geburtshoroskop — vollständige Analyse\n"
+    "🌙 Persönliches Horoskop — heutige Prognose"
+)
+PDF_BTN_NATAL = "🔮 Geburtshoroskop"
+PDF_BTN_HOROSCOPE = "🌙 Horoskop"
+PDF_NEED_PROFILE = (
+    "❌ Geburtsdaten für PDF erforderlich.\n\n"
+    "Fülle dein Profil: Profil → Bearbeiten.\n"
+    "Oder erstelle zuerst ein Geburtshoroskop."
+)
+PDF_CREATING_NATAL = "📄 Erstelle PDF Geburtshoroskop...\n\nDas kann 20-30 Sekunden dauern."
+PDF_AI_ANALYZING = "🔮 Astrologe analysiert die Karte..."
+PDF_CREATING = "📄 Erstelle PDF..."
+PDF_CREATING_HORO = "🌙 Erstelle Horoskop-PDF..."
+PDF_NATAL_CAPTION = "🔮 Geburtshoroskop: {name}"
+PDF_HORO_CAPTION = "🌙 Horoskop für {name}"
+PDF_CHOOSE_ACTION = "📌 Aktion wählen:"
+PDF_DOWNLOAD_BTN = "📄 PDF herunterladen"
+
+# === Phase 2.2.1: Sternzeichen ===
+ZODIAC_ARIES = "Widder"
+ZODIAC_TAURUS = "Stier"
+ZODIAC_GEMINI = "Zwillinge"
+ZODIAC_CANCER = "Krebs"
+ZODIAC_LEO = "Löwe"
+ZODIAC_VIRGO = "Jungfrau"
+ZODIAC_LIBRA = "Waage"
+ZODIAC_SCORPIO = "Skorpion"
+ZODIAC_SAGITTARIUS = "Schütze"
+ZODIAC_CAPRICORN = "Steinbock"
+ZODIAC_AQUARIUS = "Wassermann"
+ZODIAC_PISCES = "Fische"
+ZODIAC_UNKNOWN = "Unbekannt"
+
+# === Elemente ===
+ELEM_FIRE = "Feuer"
+ELEM_EARTH = "Erde"
+ELEM_AIR = "Luft"
+ELEM_WATER = "Wasser"
+
+# === Qualitäten ===
+QUAL_CARDINAL = "Kardinal"
+QUAL_FIXED = "Fixiert"
+QUAL_MUTABLE = "Veränderlich"
+
+# === Planeten ===
+PLANET_SUN = "Sonne"
+PLANET_MOON = "Mond"
+PLANET_MERCURY = "Merkur"
+PLANET_VENUS = "Venus"
+PLANET_MARS = "Mars"
+PLANET_JUPITER = "Jupiter"
+PLANET_SATURN = "Saturn"
+PLANET_URANUS = "Uranus"
+PLANET_NEPTUNE = "Neptun"
+PLANET_PLUTO = "Pluto"
+
+# === Geburtshoroskop ===
+NATAL_TITLE = "GEBURTSHOROSKOP"
+NATAL_HEADER_MAIN = "HAUPTMERKMALE"
+NATAL_HEADER_PLANETS = "PLANETENPOSITIONEN"
+NATAL_HEADER_HOUSES = "ASTROLOGISCHE HÄUSER"
+NATAL_HEADER_AI = "ASTROLOGISCHE ANALYSE"
+NATAL_LABEL_SUN = "Sonne im Zeichen"
+NATAL_LABEL_ELEMENT = "Element"
+NATAL_LABEL_QUALITY = "Qualität"
+NATAL_LABEL_ASC = "Aszendent"
+NATAL_LABEL_HOUSE = "Haus"
+NATAL_LABEL_RETRO = "(rückläufig)"
+
+# === PDF ===
+PDF_NATAL_TITLE = "GEBURTSHOROSKOP"
+PDF_HOROSCOPE_TITLE = "HOROSKOP"
+PDF_LABEL_DATE = "Datum"
+PDF_FOOTER = "Astrologie ist ein Werkzeug zur Selbsterkenntnis. Die Sterne zeigen den Weg, aber die Wahl liegt immer bei dir!"
+PDF_FOOTER_CREATED = "Erstellt von AstroBot"

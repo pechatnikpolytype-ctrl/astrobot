@@ -8,7 +8,8 @@ import random
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
 
-from astrology_calculator import AstrologyCalculator
+from astrology_calculator import AstrologyCalculator, sign_display, element_display, quality_display, planet_display
+from locales import t
 from database.postgres_db import get_natal_cache, set_natal_cache
 
 logger = logging.getLogger(__name__)
@@ -248,7 +249,7 @@ class NatalService:
     # ============================================================
     # SVG-СХЕМА (без астрологических символов!)
     # ============================================================
-    def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
+    def generate_svg_chart(self, chart_data: Dict[str, Any], lang: str = "ru") -> Optional[str]:
         """Генерирует SVG-схему натальной карты без символов-заменителей."""
         try:
             svg_filename = f"natal_chart_{uuid.uuid4().hex}.svg"
@@ -293,9 +294,10 @@ class NatalService:
                 y2 = 400 + 350 * math.sin(rad)
                 svg.append(f'<line x1="400" y1="400" x2="{x2}" y2="{y2}" stroke="#c9a959" stroke-width="1" opacity="0.4"/>')
 
-            # Сокращения знаков зодиака
+            # Сокращения знаков - на нужном языке
             for i, full_sign in enumerate(SIGNS_FULL):
-                short = SIGNS_SHORT.get(full_sign, "?")
+                display = sign_display(full_sign, lang)
+                short = display[:2]
                 angle = (i * 30) - 90 + 15
                 rad = math.radians(angle)
                 r = 320
@@ -320,7 +322,7 @@ class NatalService:
                 y = 400 + r * math.sin(rad)
                 svg.append(f'<circle cx="{x}" cy="{y}" r="20" fill="#1a2a3a" stroke="#FBBF24" stroke-width="2"/>')
                 # Первые 3 буквы названия
-                short_name = name[:3]
+                short_name = planet_display(name, lang)[:3]
                 svg.append(f'<text x="{x}" y="{y+5}" text-anchor="middle" fill="#FBBF24" font-size="14" font-family="DejaVu Sans, Arial" font-weight="bold">{short_name}</text>')
 
             # Асцендент
@@ -331,15 +333,15 @@ class NatalService:
                 x_asc = 400 + r_asc * math.cos(rad_asc)
                 y_asc = 400 + r_asc * math.sin(rad_asc)
                 svg.append(f'<circle cx="{x_asc}" cy="{y_asc}" r="16" fill="#FFD700" stroke="#FFFFFF" stroke-width="2"/>')
-                svg.append(f'<text x="{x_asc}" y="{y_asc+5}" text-anchor="middle" fill="#1a2a3a" font-size="11" font-weight="bold" font-family="DejaVu Sans, Arial">АСЦ</text>')
+                svg.append(f'<text x="{x_asc}" y="{y_asc+5}" text-anchor="middle" fill="#1a2a3a" font-size="11" font-weight="bold" font-family="DejaVu Sans, Arial">{t("NATAL_LABEL_ASC", lang)[:3]}</text>')
             except Exception:
                 pass
 
             # Заголовки
-            svg.append(f'<text x="400" y="45" text-anchor="middle" fill="#FFD700" font-size="22" font-weight="bold" font-family="DejaVu Sans, Arial">НАТАЛЬНАЯ КАРТА</text>')
+            svg.append(f'<text x="400" y="45" text-anchor="middle" fill="#FFD700" font-size="22" font-weight="bold" font-family="DejaVu Sans, Arial">{t("NATAL_TITLE", lang)}</text>')
             svg.append(f'<text x="400" y="75" text-anchor="middle" fill="#FFFFFF" font-size="16" font-family="DejaVu Sans, Arial">{info["name"]}</text>')
             svg.append(f'<text x="400" y="100" text-anchor="middle" fill="#c9a959" font-size="12" font-family="DejaVu Sans, Arial">{info["date"]} {info["time"]} | {info["place"]}</text>')
-            svg.append(f'<text x="400" y="760" text-anchor="middle" fill="#FFD700" font-size="13" font-family="DejaVu Sans, Arial">Асцендент: {asc}</text>')
+            svg.append(f'<text x="400" y="760" text-anchor="middle" fill="#FFD700" font-size="13" font-family="DejaVu Sans, Arial">{t("NATAL_LABEL_ASC", lang)}: {sign_display(asc, lang)}</text>')
 
             svg.append("</svg>")
             content = "".join(svg)
@@ -355,83 +357,84 @@ class NatalService:
     # ============================================================
     # ТЕКСТОВЫЙ ОТЧЁТ (без markdown и символов)
     # ============================================================
-    def generate_report_text(self, chart_data: Dict[str, Any]) -> str:
-        """Текстовый отчёт — без markdown, без символов планет."""
+    def generate_report_text(self, chart_data: Dict[str, Any], lang: str = "ru") -> str:
+        """Text report with translation."""
         lines = []
         info = chart_data["birth_info"]
 
-        lines.append("НАТАЛЬНАЯ КАРТА")
+        lines.append(t("NATAL_TITLE", lang))
         lines.append(f"{info['name']}")
-        lines.append(f"{info['date']} в {info['time']}")
+        date_in = "in" if lang == "en" else ("am" if lang == "de" else "\u0432")
+        lines.append(f"{info['date']} {date_in} {info['time']}")
         lines.append(f"{info['place']}")
         lines.append("")
 
-        lines.append("ОСНОВНЫЕ ХАРАКТЕРИСТИКИ")
-        lines.append(f"• Солнце в знаке: {chart_data['sun_sign']}")
-        lines.append(f"• Стихия: {chart_data['element']}")
-        lines.append(f"• Качество: {chart_data['quality']}")
-        lines.append(f"• Асцендент: {chart_data['ascendant']}")
+        lines.append(t("NATAL_HEADER_MAIN", lang))
+        lines.append(f"\u2022 {t('NATAL_LABEL_SUN', lang)}: {sign_display(chart_data['sun_sign'], lang)}")
+        lines.append(f"\u2022 {t('NATAL_LABEL_ELEMENT', lang)}: {element_display(chart_data['element'], lang)}")
+        lines.append(f"\u2022 {t('NATAL_LABEL_QUALITY', lang)}: {quality_display(chart_data['quality'], lang)}")
+        lines.append(f"\u2022 {t('NATAL_LABEL_ASC', lang)}: {sign_display(chart_data['ascendant'], lang)}")
         lines.append("")
 
-        lines.append("ПОЛОЖЕНИЕ ПЛАНЕТ")
-        for p in chart_data["planets"]:
-            retro = " (ретроградный)" if p.get("retrograde") else ""
-            lines.append(f"• {p['name']} в знаке {p['sign']} ({p['house']} дом){retro}")
+        lines.append(t("NATAL_HEADER_PLANETS", lang))
+        for pl in chart_data["planets"]:
+            retro = f" {t('NATAL_LABEL_RETRO', lang)}" if pl.get("retrograde") else ""
+            pl_name = planet_display(pl['name'], lang)
+            pl_sign = sign_display(pl['sign'], lang)
+            lines.append(f"\u2022 {pl_name}: {pl_sign} ({pl['house']} {t('NATAL_LABEL_HOUSE', lang)}){retro}")
         lines.append("")
 
-        lines.append("АСТРОЛОГИЧЕСКИЕ ДОМА")
+        lines.append(t("NATAL_HEADER_HOUSES", lang))
         for h in chart_data["houses"]:
-            lines.append(f"• {h['number']} дом: {h['sign']}")
+            lines.append(f"\u2022 {h['number']} {t('NATAL_LABEL_HOUSE', lang)}: {sign_display(h['sign'], lang)}")
         lines.append("")
 
         return "\n".join(lines)
-
     # ============================================================
     # AI-ИНТЕРПРЕТАЦИЯ
     # ============================================================
-    async def generate_ai_report(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Генерирует AI-интерпретацию с кэшем."""
+    async def generate_ai_report(self, chart_data: Dict[str, Any], lang: str = "ru") -> Optional[str]:
+        """AI interpretation with cache. lang affects cache key."""
         try:
             info = chart_data.get("birth_info", {})
-            # Ключ кэша
-            cache_key_raw = f"{info.get('name','')}_{info.get('date','')}_{info.get('time','')}_{info.get('place','')}"
+            cache_key_raw = f"{info.get('name','')}_{info.get('date','')}_{info.get('time','')}_{info.get('place','')}_{lang}"
             cache_key = hashlib.md5(cache_key_raw.encode()).hexdigest()[:16]
 
-            # Проверка кэша
             cached = await get_natal_cache(cache_key)
             if cached and cached.get("text"):
-                logger.info(f"✅ AI-интерпретация из кэша: {cache_key}")
+                logger.info(f"[CACHE] AI interpretation: {cache_key}")
                 return cached["text"]
 
-            # Запрос к AI
             from ai_service_n1n import ai_service
-            text = await ai_service.generate_natal_interpretation(chart_data)
+            try:
+                text = await ai_service.generate_natal_interpretation(chart_data, lang=lang)
+            except TypeError:
+                text = await ai_service.generate_natal_interpretation(chart_data)
+
             if not text:
                 return None
 
-            # Сохраняем в кэш
             await set_natal_cache(cache_key, text)
             return text
 
         except Exception as e:
-            logger.error(f"Ошибка AI-интерпретации: {e}")
+            logger.error(f"AI interpretation error: {e}")
             return None
-
     # ============================================================
     # ГЛАВНЫЙ МЕТОД: полный отчёт с AI
     # ============================================================
-    async def generate_full_report(self, chart_data: Dict[str, Any]) -> str:
-        """Полный отчёт: шаблон + AI-интерпретация."""
-        base = self.generate_report_text(chart_data)
-        ai_text = await self.generate_ai_report(chart_data)
+    async def generate_full_report(self, chart_data: Dict[str, Any], lang: str = "ru") -> str:
+        """Full report: text + AI."""
+        base = self.generate_report_text(chart_data, lang=lang)
+        ai_text = await self.generate_ai_report(chart_data, lang=lang)
 
         if ai_text:
-            return base + "\n🔮 АСТРОЛОГИЧЕСКИЙ АНАЛИЗ\n\n" + ai_text
+            return base + f"\n\U0001F52E {t('NATAL_HEADER_AI', lang)}\n\n" + ai_text
         else:
-            # Fallback — старая шаблонная интерпретация
-            sun_sign = chart_data.get("sun_sign", "Неизвестно")
-            template = SHORT_INTERPRETATIONS.get(sun_sign, "у вас уникальная личность.")
-            return base + f"\nИНТЕРПРЕТАЦИЯ\n\n{template}"
-
+            sun_sign = chart_data.get("sun_sign", "Unknown")
+            template = SHORT_INTERPRETATIONS.get(sun_sign, "")
+            if not template:
+                template = sign_display(sun_sign, lang)
+            return base + f"\n{t('NATAL_HEADER_AI', lang)}\n\n{template}"
 
 natal_service = NatalService()

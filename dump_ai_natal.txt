@@ -1,0 +1,47 @@
+async def generate_natal_interpretation(self, chart_data: Dict[str, Any]) -> Optional[str]:
+        info = chart_data.get("birth_info", {})
+        planets = chart_data.get("planets", [])
+        planets_text = "\n".join([
+            f"- {p.get('name', '?')} в {p.get('sign', '?')} ({p.get('house', '?')} дом)"
+            for p in planets
+        ])
+        system_prompt = (
+            "Ты — профессиональный астролог. Составь интерпретацию натальной карты.\n"
+            "Требования:\n"
+            "- 8-10 предложений\n"
+            "- На основе РЕАЛЬНЫХ позиций планет\n"
+            "- Без markdown\n"
+            "- Тёплый, поддерживающий тон\n"
+        )
+        user_prompt = f"""Пользователь: {info.get('name', 'Пользователь')}
+Дата: {info.get('date', '?')} в {info.get('time', '?')}
+Место: {info.get('place', '?')}
+Солнце в {chart_data.get('sun_sign', '?')}
+Стихия: {chart_data.get('element', '?')}
+Качество: {chart_data.get('quality', '?')}
+Асцендент: {chart_data.get('ascendant', '?')}
+
+Планеты:
+{planets_text}
+
+Составь персональную интерпретацию."""
+        answer = await self._query_ai(system_prompt, user_prompt, max_tokens=1200)
+        return self._clean_response(answer) if answer else None
+
+    # ============================================================
+    # FALLBACK
+    # ============================================================
+    def _get_fallback_answer(self, question: str) -> str:
+        q_lower = question.lower()
+        if any(w in q_lower for w in ["совместимость", "отношения", "любовь"]):
+            return "💕 Совместимость — сложная тема. Попробуйте позже."
+        if any(w in q_lower for w in ["карьера", "работа", "деньги"]):
+            return "💼 Карьерный вопрос важен. AI временно недоступен, попробуйте позже."
+        if any(w in q_lower for w in ["здоровье"]):
+            return "🌿 О здоровье важно. AI временно недоступен."
+        fallbacks = [
+            "🌟 Сейчас звёзды дают мало сигналов — попробуйте позже.",
+            "🔮 AI-астролог временно занят. Попробуйте через пару минут.",
+            "✨ Вселенная готовит ответ. Попробуйте ещё раз.",
+        ]
+        return random.choice(fallbacks)

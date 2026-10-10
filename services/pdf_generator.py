@@ -9,6 +9,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.colors import HexColor, white
 from reportlab.lib.utils import ImageReader
 
+from locales import t
+from astrology_calculator import sign_display, element_display, quality_display, planet_display
+
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,7 +83,7 @@ class ProfessionalPDFGenerator:
     # ============================================================
     # НАТАЛЬНАЯ КАРТА PDF
     # ============================================================
-    def create_natal_chart_pdf(self, chart_data: dict) -> str:
+    def create_natal_chart_pdf(self, chart_data: dict, lang: str = "ru") -> str:
         """PDF натальной карты без символов и markdown."""
         filename = f"natal_report_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
@@ -140,13 +143,13 @@ class ProfessionalPDFGenerator:
         y_left = y
         for p in planets[:half]:
             retro = " (R)" if p.get("retrograde") else ""
-            text = f"{p.get('name', '?')} в {p.get('sign', '?')} ({p.get('house', '?')} дом){retro}"
+            text = f"{planet_display(p.get('name', '?'), lang)}: {sign_display(p.get('sign', '?'), lang)} ({p.get('house', '?')} {t('NATAL_LABEL_HOUSE', lang)}){retro}"
             c.drawString(70, y_left, text)
             y_left -= 16
         y_right = y
         for p in planets[half:]:
             retro = " (R)" if p.get("retrograde") else ""
-            text = f"{p.get('name', '?')} в {p.get('sign', '?')} ({p.get('house', '?')} дом){retro}"
+            text = f"{planet_display(p.get('name', '?'), lang)}: {sign_display(p.get('sign', '?'), lang)} ({p.get('house', '?')} {t('NATAL_LABEL_HOUSE', lang)}){retro}"
             c.drawString(350, y_right, text)
             y_right -= 16
         y = min(y_left, y_right) - 30
@@ -165,7 +168,7 @@ class ProfessionalPDFGenerator:
             row = i // 4
             x = 50 + col * col_width
             y_pos = y - row * 16
-            c.drawString(x, y_pos, f"{h.get('number', '?')} дом: {h.get('sign', '?')}")
+            c.drawString(x, y_pos, f"{h.get('number', '?')} {t('NATAL_LABEL_HOUSE', lang)}: {sign_display(h.get('sign', '?'), lang)}")
         rows = (len(houses) + 3) // 4
         y = y - rows * 16 - 30
 
@@ -186,11 +189,11 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(
             width / 2, 40,
-            "Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!"
+            t("PDF_FOOTER", lang)
         )
         c.drawCentredString(
             width / 2, 25,
-            f"Сгенерировано AstroBot • {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            f"{t('PDF_FOOTER_CREATED', lang)} • {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         )
 
         c.save()
@@ -199,7 +202,7 @@ class ProfessionalPDFGenerator:
     # ============================================================
     # ГОРОСКОП PDF
     # ============================================================
-    def create_horoscope_pdf(self, data: dict) -> str:
+    def create_horoscope_pdf(self, data: dict, lang: str = "ru") -> str:
         filename = f"horoscope_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
@@ -235,11 +238,11 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(
             width / 2, 40,
-            "Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!"
+            t("PDF_FOOTER", lang)
         )
         c.drawCentredString(
             width / 2, 25,
-            f"Сгенерировано AstroBot • {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            f"{t('PDF_FOOTER_CREATED', lang)} • {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         )
 
         c.save()

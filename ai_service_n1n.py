@@ -482,39 +482,43 @@ TEXT:
     # ============================================================
     # НАТАЛЬНАЯ КАРТА
     # ============================================================
-    async def generate_natal_interpretation(self, chart_data: Dict[str, Any]) -> Optional[str]:
+    async def generate_natal_interpretation(self, chart_data: Dict[str, Any], lang: str = "ru") -> Optional[str]:
         info = chart_data.get("birth_info", {})
         planets = chart_data.get("planets", [])
         planets_text = "\n".join([
-            f"- {p.get('name', '?')} в {p.get('sign', '?')} ({p.get('house', '?')} дом)"
+            f"- {p.get('name', '?')} in {p.get('sign', '?')} ({p.get('house', '?')} house)"
             for p in planets
         ])
+
+        # Language name mapping
+        lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
+
         system_prompt = (
-            "Ты — профессиональный астролог. Составь интерпретацию натальной карты.\n"
-            "Требования:\n"
-            "- 8-10 предложений\n"
-            "- На основе РЕАЛЬНЫХ позиций планет\n"
-            "- Без markdown\n"
-            "- Тёплый, поддерживающий тон\n"
+            "You are a professional astrologer. Compose a natal chart interpretation.\n"
+            "Requirements:\n"
+            "- 8-10 sentences\n"
+            "- Based on REAL planet positions\n"
+            "- No markdown (no **, __, `)\n"
+            "- Warm, supportive tone\n"
+            f"- IMPORTANT: Answer ONLY in {lang_name} language\n"
         )
-        user_prompt = f"""Пользователь: {info.get('name', 'Пользователь')}
-Дата: {info.get('date', '?')} в {info.get('time', '?')}
-Место: {info.get('place', '?')}
-Солнце в {chart_data.get('sun_sign', '?')}
-Стихия: {chart_data.get('element', '?')}
-Качество: {chart_data.get('quality', '?')}
-Асцендент: {chart_data.get('ascendant', '?')}
 
-Планеты:
-{planets_text}
+        user_prompt = (
+            f"Name: {info.get('name', 'User')}\n"
+            f"Date: {info.get('date', '?')} at {info.get('time', '?')}\n"
+            f"Place: {info.get('place', '?')}\n"
+            f"Sun in: {chart_data.get('sun_sign', '?')}\n"
+            f"Element: {chart_data.get('element', '?')}\n"
+            f"Quality: {chart_data.get('quality', '?')}\n"
+            f"Ascendant: {chart_data.get('ascendant', '?')}\n\n"
+            f"Planets:\n{planets_text}\n\n"
+            f"Compose a personal interpretation in {lang_name}."
+        )
 
-Составь персональную интерпретацию."""
         answer = await self._query_ai(system_prompt, user_prompt, max_tokens=1200)
         return self._clean_response(answer) if answer else None
 
-    # ============================================================
-    # FALLBACK
-    # ============================================================
+
     def _get_fallback_answer(self, question: str) -> str:
         q_lower = question.lower()
         if any(w in q_lower for w in ["совместимость", "отношения", "любовь"]):

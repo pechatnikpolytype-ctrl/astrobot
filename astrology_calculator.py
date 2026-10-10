@@ -294,3 +294,73 @@ class CompatibilityCalculator:
             return "Работайте над взаимопониманием. Цените различия - они делают вас уникальными."
 
 compatibility_calc = CompatibilityCalculator()
+
+# ============================================================
+# МАППИНГ RU → i18n-ключ (для мультиязычности)
+# ============================================================
+SIGN_KEY_MAP = {
+    "Овен": "ZODIAC_ARIES",
+    "Телец": "ZODIAC_TAURUS",
+    "Близнецы": "ZODIAC_GEMINI",
+    "Рак": "ZODIAC_CANCER",
+    "Лев": "ZODIAC_LEO",
+    "Дева": "ZODIAC_VIRGO",
+    "Весы": "ZODIAC_LIBRA",
+    "Скорпион": "ZODIAC_SCORPIO",
+    "Стрелец": "ZODIAC_SAGITTARIUS",
+    "Козерог": "ZODIAC_CAPRICORN",
+    "Водолей": "ZODIAC_AQUARIUS",
+    "Рыбы": "ZODIAC_PISCES",
+    "Неизвестно": "ZODIAC_UNKNOWN",
+}
+
+ELEMENT_KEY_MAP = {
+    "Огонь": "ELEM_FIRE",
+    "Земля": "ELEM_EARTH",
+    "Воздух": "ELEM_AIR",
+    "Вода": "ELEM_WATER",
+}
+
+QUALITY_KEY_MAP = {
+    "Кардинальный": "QUAL_CARDINAL",
+    "Фиксированный": "QUAL_FIXED",
+    "Мутабельный": "QUAL_MUTABLE",
+}
+
+PLANET_KEY_MAP = {
+    "Солнце": "PLANET_SUN",
+    "Луна": "PLANET_MOON",
+    "Меркурий": "PLANET_MERCURY",
+    "Венера": "PLANET_VENUS",
+    "Марс": "PLANET_MARS",
+    "Юпитер": "PLANET_JUPITER",
+    "Сатурн": "PLANET_SATURN",
+    "Уран": "PLANET_URANUS",
+    "Нептун": "PLANET_NEPTUNE",
+    "Плутон": "PLANET_PLUTO",
+}
+
+
+def sign_display(sign_ru: str, lang: str = "ru") -> str:
+    """Перевод знака зодиака (RU → любой язык)."""
+    from locales import t
+    key = SIGN_KEY_MAP.get(sign_ru, "ZODIAC_UNKNOWN")
+    return t(key, lang)
+
+
+def element_display(elem_ru: str, lang: str = "ru") -> str:
+    from locales import t
+    key = ELEMENT_KEY_MAP.get(elem_ru, "ZODIAC_UNKNOWN")
+    return t(key, lang)
+
+
+def quality_display(q_ru: str, lang: str = "ru") -> str:
+    from locales import t
+    key = QUALITY_KEY_MAP.get(q_ru, "ZODIAC_UNKNOWN")
+    return t(key, lang)
+
+
+def planet_display(planet_ru: str, lang: str = "ru") -> str:
+    from locales import t
+    key = PLANET_KEY_MAP.get(planet_ru, planet_ru)
+    return t(key, lang)
