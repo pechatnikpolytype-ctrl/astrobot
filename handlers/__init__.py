@@ -1,4 +1,5 @@
 from .start import router as start_router
+from .lang import router as lang_router
 from .ai_handler import router as ai_router
 from .natal import router as natal_router
 from .admin_simple import router as admin_router
@@ -14,6 +15,7 @@ from .admin_ads import router as ads_router
 from .tarot import router as tarot_router
 __all__ = [
     "start_router",
+    "lang_router",
     "ai_router",
     "natal_router",
     "admin_router",

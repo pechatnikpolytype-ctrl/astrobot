@@ -47,3 +47,10 @@ FREE_MODE = os.getenv("FREE_MODE", "true").lower() in ("1", "true", "yes", "on")
 # ============================================================
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 PORT = int(os.getenv("PORT", "10000"))
+
+# ============================================================
+# МУЛЬТИЯЗЫЧНОСТЬ
+# ============================================================
+# MULTILANG_ENABLED = True  -> языки (RU/EN/DE) включены
+# MULTILANG_ENABLED = False -> только русский (по умолчанию)
+MULTILANG_ENABLED = os.getenv("MULTILANG_ENABLED", "false").lower() in ("1", "true", "yes", "on")

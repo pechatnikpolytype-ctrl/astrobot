@@ -27,6 +27,9 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 from handlers.start import router as start_router
+from config import MULTILANG_ENABLED
+if MULTILANG_ENABLED:
+    from handlers.lang import router as lang_router
 from handlers.tarot import router as tarot_router
 from handlers.menu_commands import router as menu_router
 from handlers.mood_diary import router as mood_router
@@ -41,6 +44,8 @@ from handlers.pdf_handler import router as pdf_router
 from handlers.payment import router as payment_router
 
 dp.include_router(start_router)
+if MULTILANG_ENABLED:
+    dp.include_router(lang_router)
 dp.include_router(tarot_router)
 dp.include_router(ads_router)
 dp.include_router(mood_router)

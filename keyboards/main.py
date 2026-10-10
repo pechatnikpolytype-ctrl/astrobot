@@ -30,6 +30,7 @@ def main_menu_keyboard(user_id):
     kb.button(text="📔 Дневник", callback_data="mood_diary")
     kb.button(text="🃏 Таро", callback_data="tarot_menu")
     kb.button(text="📄 PDF отчёт", callback_data="generate_pdf")
+    kb.button(text="🌐 Язык", callback_data="lang_menu")
     from config import ADMINS
     if user_id in ADMINS:
         kb.button(text="👑 Админ-панель", callback_data="admin_panel")

@@ -114,7 +114,19 @@ async def init_postgres_db():
         except Exception as e:
             logger.warning(f"Миграция payments.days: {e}")
 
-        # --- REQUESTS ---
+        
+        # --- MIGRATION: language (multilang) ---
+        try:
+            from config import MULTILANG_ENABLED
+            if MULTILANG_ENABLED:
+                await conn.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'ru'"
+                )
+                logger.info("✅ Колонка users.language создана/проверена")
+        except Exception as e:
+            logger.warning(f"Миграция language: {e}")
+
+# --- REQUESTS ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS requests (
                 id SERIAL PRIMARY KEY,
@@ -1722,3 +1734,29 @@ async def count_tarot_today() -> int:
             "SELECT COUNT(*) FROM tarot_readings WHERE reading_date = $1", today
         )
     return count or 0
+
+# ============================================================
+# МУЛЬТИЯЗЫЧНОСТЬ
+# ============================================================
+async def update_user_language(user_id: int, lang: str):
+    """Сохраняет язык пользователя."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET language = $1 WHERE user_id = $2",
+            lang, user_id
+        )
+
+
+async def get_user_language(user_id: int) -> str:
+    """Возвращает язык пользователя (или 'ru')."""
+    try:
+        pool = await db.create_pool()
+        async with pool.acquire() as conn:
+            val = await conn.fetchval(
+                "SELECT language FROM users WHERE user_id = $1",
+                user_id
+            )
+        return val or "ru"
+    except Exception:
+        return "ru"
