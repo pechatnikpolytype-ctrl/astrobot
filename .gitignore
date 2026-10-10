@@ -1,4 +1,4 @@
-# === Секреты ===
+﻿# === Секреты ===
 .env
 .env.local
 *.pem
@@ -34,14 +34,17 @@ htmlcov/
 backups/
 logs/
 
-# === PDF и файлы ===
+# === PDF и временные ===
 *.pdf
 *.png
+*.gif
+
+# === Картинки: игнорим везде, КРОМЕ нужных папок ===
 *.jpg
 *.jpeg
-*.gif
-!static/*
-!fonts/*
+!data/tarot_cards/**/*.jpg
+!static/**/*.jpg
+!fonts/**/*.ttf
 
 # === IDE ===
 .idea/
@@ -57,7 +60,6 @@ $RECYCLE.BIN/
 desktop.ini
 
 # === Render / деплой ===
-.project_dump.txt
 project_dump.txt
 CLEAN_BUILD_LOG.txt
 download_files*.py
