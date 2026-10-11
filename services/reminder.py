@@ -1,75 +1,59 @@
+"""Reminder service with multilang support."""
 import asyncio
 import logging
-from datetime import datetime
+import random
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.postgres_db import (
     get_users_for_reminder, set_last_reminder,
     should_send_reminder, get_reminder_settings,
+    get_user_lang_cached,
 )
+from config import MULTILANG_ENABLED
+from locales import t
 
 logger = logging.getLogger(__name__)
 
 
-# ============================================================
-# ТЕКСТЫ НАПОМИНАНИЙ (4 варианта)
-# ============================================================
-REMINDER_TEXTS = [
-    "🌟 Хотите более точные прогнозы?\n\n"
-    "Заполните профиль — астролог будет учитывать ваш знак зодиака, "
-    "интересы и цели.\n\n"
-    "Это займёт 2 минуты, а ответы станут гораздо точнее!",
-
-    "💫 Мы заметили, что вы ещё не заполнили профиль.\n\n"
-    "Астрология — это про индивидуальность. Чем больше астролог знает о вас, "
-    "тем точнее его советы.\n\n"
-    "Заполните профиль — и получите персональные прогнозы!",
-
-    "🔮 Ваша натальная карта уникальна!\n\n"
-    "Заполните профиль, чтобы астролог учитывал:\n"
-    "  • Ваш знак зодиака\n"
-    "  • Ваши интересы и цели\n"
-    "  • Особенности вашей личности\n\n"
-    "Это сделает прогнозы точнее.",
-
-    "✨ Небольшая просьба 🙏\n\n"
-    "Заполните профиль — это поможет астрологу отвечать персонально.\n\n"
-    "Вы всегда можете изменить или удалить данные в любой момент.",
-]
+REMINDER_KEYS = ["REMINDER_1", "REMINDER_2", "REMINDER_3", "REMINDER_4"]
 
 
-def _build_keyboard():
+def _build_keyboard(lang: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="👤 Заполнить профиль",
+            text=t("REMINDER_BTN_FILL", lang),
             callback_data="profile_edit"
         )],
         [InlineKeyboardButton(
-            text="🔙 Главное меню",
+            text=t("BTN_BACK_MENU", lang),
             callback_data="main_menu"
         )],
     ])
 
 
-# ============================================================
-# ОТПРАВКА НАПОМИНАНИЙ
-# ============================================================
+async def _lang_safe(user_id: int) -> str:
+    if not MULTILANG_ENABLED:
+        return "ru"
+    try:
+        return await get_user_lang_cached(user_id)
+    except Exception:
+        return "ru"
+
+
 async def send_reminders(bot: Bot):
-    """Отправляет напоминания всем, кому нужно."""
     settings = await get_reminder_settings()
     if not settings.get("enabled", True):
-        logger.info("⏸️ Напоминания отключены")
+        logger.info("Reminders disabled")
         return
 
     users = await get_users_for_reminder(limit=200)
     if not users:
-        logger.info("✅ Нет пользователей для напоминаний")
+        logger.info("No users for reminders")
         return
 
-    logger.info(f"🔔 Отправка напоминаний: {len(users)} пользователей")
+    logger.info(f"Sending reminders: {len(users)} users")
 
-    import random
     sent = 0
     failed = 0
 
@@ -79,36 +63,27 @@ async def send_reminders(bot: Bot):
             if not await should_send_reminder(user_id):
                 continue
 
-            text = random.choice(REMINDER_TEXTS)
-            await bot.send_message(
-                user_id,
-                text,
-                reply_markup=_build_keyboard()
-            )
+            lang = await _lang_safe(user_id)
+            key = random.choice(REMINDER_KEYS)
+            text = t(key, lang)
+            await bot.send_message(user_id, text, reply_markup=_build_keyboard(lang))
             await set_last_reminder(user_id)
             sent += 1
-
-            # Задержка, чтобы не флудить
             await asyncio.sleep(0.05)
-
         except Exception as e:
             failed += 1
-            logger.debug(f"Напоминание не отправлено {user_id}: {e}")
+            logger.debug(f"Reminder fail {user_id}: {e}")
 
-    logger.info(f"✅ Напоминания: отправлено={sent}, ошибок={failed}")
+    logger.info(f"Reminders: sent={sent}, failed={failed}")
 
 
-# ============================================================
-# ТЕСТОВОЕ НАПОМИНАНИЕ
-# ============================================================
 async def send_test_reminder(bot: Bot, user_id: int):
-    """Отправляет тестовое напоминание одному пользователю."""
-    import random
-    text = random.choice(REMINDER_TEXTS)
+    lang = await _lang_safe(user_id)
+    key = random.choice(REMINDER_KEYS)
+    text = t(key, lang)
     try:
-        await bot.send_message(user_id, f"🧪 ТЕСТОВОЕ НАПОМИНАНИЕ:\n\n{text}",
-                               reply_markup=_build_keyboard())
+        await bot.send_message(user_id, f"\U0001F9EA {text}", reply_markup=_build_keyboard(lang))
         return True
     except Exception as e:
-        logger.error(f"Ошибка тестового напоминания: {e}")
+        logger.error(f"Test reminder error: {e}")
         return False

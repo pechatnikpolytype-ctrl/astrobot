@@ -1,3 +1,4 @@
+"""Daily facts service with multilang support."""
 import asyncio
 import logging
 import random
@@ -7,129 +8,120 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.postgres_db import (
     get_daily_fact_settings, get_today_fact, set_today_fact,
-    save_fact_history, get_all_users,
+    save_fact_history, get_all_users, get_user_lang_cached,
 )
+from config import MULTILANG_ENABLED
+from locales import t
 
 logger = logging.getLogger(__name__)
 
 
-# ============================================================
-# FALLBACK ФАКТЫ (20 шт)
-# ============================================================
-FALLBACK_FACTS = [
-    "🔮 Луна меняет знак зодиака каждые 2-3 дня. Лунный гороскоп может сильно отличаться от солнечного.",
-    "✨ Меркурий становится ретроградным 3-4 раза в год. В эти периоды не рекомендуют начинать важные дела.",
-    "🌟 Знаки зодиака делятся на 4 стихии: Огонь, Земля, Воздух, Вода. Каждая стихия — свой характер.",
-    "🌙 В астрологии есть не только 12 знаков, но и 12 домов. Каждый дом отвечает за определённую сферу жизни.",
-    "💫 Солнце переходит из знака в знак примерно 20-го числа каждого месяца. Границы знаков немного отличаются от привычных дат.",
-    "🌞 Ведическая астрология (Джйотиш) считается одной из древнейших — ей около 5000 лет.",
-    "🪐 Сатурн — самая медленная планета, видимая невооружённым глазом. Он находится в одном знаке около 2,5 лет.",
-    "🌟 Асцендент часто важнее солнечного знака для описания личности — это знак, восходивший на горизонте в момент рождения.",
-    "✨ Точка весеннего равноденствия медленно перемещается. Сейчас она в Рыбах, скоро перейдёт в Водолей — Эра Водолея.",
-    "🌙 Луна в астрологии отвечает за эмоции, интуицию и подсознание. Её положение описывает внутренний мир.",
-    "💫 Каждая планета управляет определённым знаком. Марс — Овном, Венера — Тельцом и Весами.",
-    "🔮 Астрология — не только гороскопы. Это система, изучающая связь небесных тел и событий на Земле.",
-    "🌟 В натальной карте учитываются не только планеты, но и астероиды (Хирон, Церера) и лунные узлы.",
-    "✨ Ретроградность — оптическая иллюзия. Планета не движется назад, но с Земли кажется так.",
-    "🌞 Солнечный знак описывает суть, лунный — эмоции. У многих они разные — это нормально.",
-    "🌙 Полнолуние усиливает эмоции и интуицию. Полезно завершать дела и отпускать старое.",
-    "💫 Новолуние — время для новых начинаний. Лучший день для старта проектов.",
-    "🌟 Плутон — самая дальняя планета в карте. Отвечает за трансформацию и перемены.",
-    "🪐 Юпитер называют планетой удачи. Его положение показывает, где сопутствует успех.",
-    "✨ Астрология появилась в древнем Вавилоне ~2500 лет назад.",
-]
+FACT_KEYS = [f"DAILY_FACT_{i}" for i in range(1, 21)]
 
 
-def _build_fact_keyboard():
+def _build_fact_keyboard(lang: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔮 Узнать больше", callback_data="ai_question")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
+        [InlineKeyboardButton(text=t("DAILY_FACT_BTN_MORE", lang), callback_data="ai_question")],
+        [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
     ])
 
 
-async def generate_fact() -> str:
+async def _lang_safe(user_id: int) -> str:
+    if not MULTILANG_ENABLED:
+        return "ru"
+    try:
+        return await get_user_lang_cached(user_id)
+    except Exception:
+        return "ru"
+
+
+async def generate_fact(lang: str = "ru") -> str:
     try:
         from ai_service_n1n import ai_service
+        lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
         system_prompt = (
-            "Ты — астролог-просветитель. Придумай ОДИН интересный факт про астрологию.\n"
-            "Требования:\n"
-            "- 3-4 предложения\n"
-            "- БЕЗ markdown (**, __, `)\n"
-            "- БЕЗ фразы 'Знаете ли вы'\n"
-            "- Эмодзи в начале\n"
-            "- Интересный и малоизвестный\n"
+            "You are an astrologer-educator. Invent ONE interesting fact about astrology.\n"
+            "Requirements:\n"
+            "- 3-4 sentences\n"
+            "- NO markdown (**, __, `)\n"
+            "- Emoji at the start\n"
+            f"- IMPORTANT: Answer ONLY in {lang_name}\n"
         )
-        user_prompt = "Придумай интересный факт про астрологию. Без markdown, с эмодзи, 3-4 предложения."
+        user_prompt = f"Come up with an interesting fact about astrology in {lang_name}."
         text = await ai_service._query_ai(system_prompt, user_prompt, max_tokens=400)
         if text:
             text = ai_service._clean_response(text)
-            logger.info(f"✅ AI-факт: {len(text)} символов")
+            logger.info(f"AI fact: {len(text)} chars, lang={lang}")
             return text
     except Exception as e:
-        logger.error(f"Ошибка AI-факта: {e}")
+        logger.error(f"AI fact error: {e}")
 
-    logger.warning("⚠️ Fallback факт")
-    return random.choice(FALLBACK_FACTS)
+    # Fallback: random from locales
+    key = random.choice(FACT_KEYS)
+    return t(key, lang)
 
 
 async def send_daily_facts(bot: Bot):
     settings = await get_daily_fact_settings()
     if not settings.get("enabled", True):
-        logger.info("⏸️ Утренние факты отключены")
+        logger.info("Daily facts disabled")
         return
 
-    # Факт из кэша или новый
-    today_fact = await get_today_fact()
-    if today_fact and today_fact.get("text"):
-        fact_text = today_fact["text"]
-        logger.info("✅ Факт из кэша")
+    today_fact_ru = await get_today_fact()
+    fact_text_ru = None
+    if today_fact_ru and today_fact_ru.get("text"):
+        fact_text_ru = today_fact_ru["text"]
+        logger.info("Fact from cache")
     else:
-        fact_text = await generate_fact()
-        if not fact_text:
+        fact_text_ru = await generate_fact("ru")
+        if not fact_text_ru:
             return
-        await set_today_fact(fact_text)
-        await save_fact_history(fact_text)
+        await set_today_fact(fact_text_ru)
+        await save_fact_history(fact_text_ru)
 
     users = await get_all_users()
     if not users:
-        logger.info("👥 Нет пользователей")
         return
 
-    logger.info(f"📤 Рассылка фактов: {len(users)} чел.")
-
-    text = (
-        f"✨ ИНТЕРЕСНЫЙ ФАКТ ДНЯ\n\n"
-        f"{fact_text}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🌙 Хотите узнать больше о своём знаке?"
-    )
+    logger.info(f"Sending facts: {len(users)} users")
 
     sent = 0
     failed = 0
     for user in users:
+        user_id = user["user_id"]
         try:
-            await bot.send_message(
-                user["user_id"],
-                text,
-                reply_markup=_build_fact_keyboard()
+            lang = await _lang_safe(user_id)
+            if lang == "ru":
+                fact_text = fact_text_ru
+            else:
+                fact_text = t(random.choice(FACT_KEYS), lang)
+
+            divider = "\u2501" * 24
+            text = (
+                f"{t('DAILY_FACT_HEADER', lang)}\n\n"
+                f"{fact_text}\n\n"
+                f"{divider}\n"
+                f"{t('DAILY_FACT_FOOTER', lang)}"
             )
+            await bot.send_message(user_id, text, reply_markup=_build_fact_keyboard(lang))
             sent += 1
             await asyncio.sleep(0.05)
         except Exception as e:
             failed += 1
-            logger.debug(f"Факт не отправлен {user['user_id']}: {e}")
+            logger.debug(f"Fact fail {user_id}: {e}")
 
-    logger.info(f"✅ Факты: отправлено={sent}, ошибок={failed}")
+    logger.info(f"Facts: sent={sent}, failed={failed}")
 
 
 async def send_test_fact(bot: Bot, user_id: int):
-    fact_text = await generate_fact()
+    lang = await _lang_safe(user_id)
+    fact_text = await generate_fact(lang)
     if not fact_text:
         return False
-    text = f"🧪 ТЕСТОВЫЙ ФАКТ:\n\n{fact_text}"
+    text = f"{t('DAILY_FACT_TEST_PREFIX', lang)}\n\n{fact_text}"
     try:
-        await bot.send_message(user_id, text, reply_markup=_build_fact_keyboard())
+        await bot.send_message(user_id, text, reply_markup=_build_fact_keyboard(lang))
         return True
     except Exception as e:
-        logger.error(f"Тестовый факт: {e}")
+        logger.error(f"Test fact error: {e}")
         return False
