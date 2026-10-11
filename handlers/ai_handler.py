@@ -1,3 +1,4 @@
+"""AI handler with multilang support."""
 import asyncio
 import logging
 from aiogram import Router, F
@@ -13,147 +14,142 @@ from utils.validators import validator
 from database.postgres_db import (
     get_user_ai_limit, get_ai_usage, increment_ai_usage,
     add_user_note, get_user, get_user_notes,
-    is_admin,
+    is_admin, get_user_lang_cached,
 )
-from config import ADMINS
+from config import ADMINS, MULTILANG_ENABLED
+from locales import t
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
-# ============================================================
-# МЕНЮ AI-ВОПРОСОВ
-# ============================================================
+async def _lang(user_id: int) -> str:
+    if not MULTILANG_ENABLED:
+        return "ru"
+    try:
+        return await get_user_lang_cached(user_id)
+    except Exception:
+        return "ru"
+
+
+def _ai_question_kb(lang: str):
+    labels = {
+        "ru": ("\U0001F4AD \u0417\u0430\u0434\u0430\u0442\u044c \u0432\u043e\u043f\u0440\u043e\u0441", "\U0001F4DD \u041f\u0440\u0438\u043c\u0435\u0440\u044b"),
+        "en": ("\U0001F4AD Ask a question", "\U0001F4DD Examples"),
+        "de": ("\U0001F4AD Frage stellen", "\U0001F4DD Beispiele"),
+    }
+    ask, ex = labels.get(lang, labels["ru"])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=ask, callback_data="ask_ai")],
+        [InlineKeyboardButton(text=ex, callback_data="ai_examples")],
+        [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
+    ])
+
+
+def _ai_dialog_kb(lang: str):
+    labels = {
+        "ru": ("\U0001F51A \u0417\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u044c \u0434\u0438\u0430\u043b\u043e\u0433", "\U0001F4DD \u041f\u0440\u0438\u043c\u0435\u0440\u044b \u0432\u043e\u043f\u0440\u043e\u0441\u043e\u0432"),
+        "en": ("\U0001F51A End dialogue", "\U0001F4DD Question examples"),
+        "de": ("\U0001F51A Dialog beenden", "\U0001F4DD Fragebeispiele"),
+    }
+    end, ex = labels.get(lang, labels["ru"])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=end, callback_data="ai_end_dialog")],
+        [InlineKeyboardButton(text=ex, callback_data="ai_examples")],
+    ])
+
+
 @router.callback_query(F.data == "ai_question")
 async def ai_question_menu(callback: CallbackQuery):
     user_id = callback.from_user.id
+    lang = await _lang(user_id)
     limit = await get_user_ai_limit(user_id)
     usage = await get_ai_usage(user_id)
 
     if limit == -1:
-        limit_text = "🔮 Осталось вопросов: ♾️ без лимита"
+        limit_text = t("AI_MENU_LIMIT_UNLIMITED", lang)
     else:
         left = max(0, limit - usage)
-        limit_text = f"🔮 Осталось вопросов: {left}/{limit}"
+        limit_text = t("AI_MENU_LIMIT", lang, left=left, limit=limit)
 
+    divider = "\u2501" * 24
     text = (
-        "🔮 АСТРОЛОГ\n\n"
-        "Задайте любой вопрос о гороскопах, знаках зодиака, "
-        "совместимости или влиянии планет!\n\n"
-        "📝 Примеры:\n"
-        "  • Что ждёт Овна на этой неделе?\n"
-        "  • Какая совместимость у Льва и Скорпиона?\n"
-        "  • Как ретроградный Меркурий влияет на меня?\n\n"
-        f"{limit_text}\n\n"
-        "💡 Астролог знает ваш профиль и отвечает персонально!\n\n"
-        "💬 После ответа вы можете задавать ещё вопросы "
-        "без нажатия кнопок — просто пишите.\n"
-        "Когда закончите — нажмите «🔚 Закончить диалог»."
+        t("AI_MENU_TITLE", lang) + "\n\n"
+        + t("AI_MENU_DESC", lang) + "\n\n"
+        + t("AI_MENU_EXAMPLES", lang) + "\n\n"
+        + limit_text + "\n\n"
+        + t("AI_MENU_PROFILE_NOTE", lang) + "\n\n"
+        + t("AI_MENU_DIALOG_NOTE", lang)
     )
 
     try:
-        await callback.message.edit_text(text, reply_markup=ai_question_keyboard())
+        await callback.message.edit_text(text, reply_markup=_ai_question_kb(lang))
     except Exception:
-        await callback.message.answer(text, reply_markup=ai_question_keyboard())
+        await callback.message.answer(text, reply_markup=_ai_question_kb(lang))
 
 
 @router.callback_query(F.data == "ask_ai")
 async def start_ai_question(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
+    lang = await _lang(user_id)
     limit = await get_user_ai_limit(user_id)
     usage = await get_ai_usage(user_id)
 
     if limit != -1 and usage >= limit:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💎 Купить Премиум", callback_data="check_status")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
+            [InlineKeyboardButton(text=t("AI_LIMIT_BUY", lang), callback_data="check_status")],
+            [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
         ])
+        limit_text = t("AI_LIMIT_TITLE", lang) + "\n\n" + t("AI_LIMIT_DESC", lang, usage=usage, limit=limit)
         try:
-            await callback.message.edit_text(
-                "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
-                f"Вы задали {usage}/{limit} вопросов сегодня.\n"
-                "Лимит обновится в 00:00 UTC.\n\n"
-                "💎 Купите Премиум — 100 запросов/день.",
-                reply_markup=keyboard
-            )
+            await callback.message.edit_text(limit_text, reply_markup=keyboard)
         except Exception:
-            await callback.message.answer(
-                "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
-                f"Вы задали {usage}/{limit} вопросов сегодня.",
-                reply_markup=keyboard
-            )
+            await callback.message.answer(limit_text, reply_markup=keyboard)
         return
 
     await state.set_state(AIQuestionStates.waiting_question)
     try:
-        await callback.message.edit_text(
-            "🔮 ЗАДАЙТЕ ВАШ ВОПРОС\n\n"
-            "Напишите любой астрологический вопрос.\n\n"
-            "💬 Можно задать несколько вопросов подряд — "
-            "просто пишите.\n"
-            "Когда закончите — нажмите «🔚 Закончить диалог».\n\n"
-            "/cancel — отмена"
-        )
+        await callback.message.edit_text(t("AI_ASK", lang))
     except Exception:
-        await callback.message.answer(
-            "🔮 ЗАДАЙТЕ ВАШ ВОПРОС\n\n/cancel — отмена"
-        )
+        await callback.message.answer(t("AI_ASK_SHORT", lang))
 
 
-# ============================================================
-# ОБРАБОТКА ВОПРОСА (FSM НЕ сбрасывается)
-# ============================================================
 @router.message(AIQuestionStates.waiting_question)
 async def process_ai_question(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    lang = await _lang(user_id)
 
-    # Отмена
     if message.text == "/cancel":
         await state.clear()
-        await message.answer(
-            "Диалог завершён.",
-            reply_markup=back_to_menu_keyboard()
-        )
+        await message.answer(t("AI_CANCELLED", lang), reply_markup=back_to_menu_keyboard(lang))
         return
 
-    # Валидация
     valid, result = validator.validate_question(message.text)
     if not valid:
-        await message.answer(
-            f"❌ {result}\n\nПожалуйста, задайте осмысленный вопрос.",
-            reply_markup=ai_dialog_keyboard()
-        )
+        await message.answer(f"\u274c {result}", reply_markup=_ai_dialog_kb(lang))
         return
 
-    # Проверка лимита
     limit = await get_user_ai_limit(user_id)
     usage = await get_ai_usage(user_id)
 
     if limit != -1 and usage >= limit:
         await state.clear()
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💎 Купить Премиум", callback_data="check_status")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")],
+            [InlineKeyboardButton(text=t("AI_LIMIT_BUY", lang), callback_data="check_status")],
+            [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
         ])
         await message.answer(
-            "⚠️ ЛИМИТ ВОПРОСОВ ИСЧЕРПАН\n\n"
-            f"Вы задали {usage}/{limit} вопросов сегодня.\n"
-            "Лимит обновится в 00:00 UTC.",
+            t("AI_LIMIT_TITLE", lang) + "\n\n" + t("AI_LIMIT_DESC", lang, usage=usage, limit=limit),
             reply_markup=keyboard
         )
         return
 
-    # Сообщение о обработке
-    processing_msg = await message.answer("🔮 Астролог анализирует ваш вопрос...")
+    processing_msg = await message.answer(t("AI_PROCESSING", lang))
 
     async def update_thinking():
         await asyncio.sleep(3)
         try:
-            await processing_msg.edit_text(
-                "🔮 Астролог думает...\n\n"
-                "Это может занять 10-30 секунд.\n"
-                "Пожалуйста, подождите."
-            )
+            await processing_msg.edit_text(t("AI_THINKING", lang))
         except Exception:
             pass
 
@@ -168,7 +164,7 @@ async def process_ai_question(message: Message, state: FSMContext):
         except Exception:
             pass
 
-        answer = response.get("message", "Ошибка ответа")
+        answer = response.get("message", "Error")
         from_cache = response.get("from_cache", False)
         facts = response.get("facts", [])
 
@@ -177,138 +173,111 @@ async def process_ai_question(message: Message, state: FSMContext):
 
         admin_marker = ""
         if await is_admin(user_id):
-            admin_marker = f"\n\n🤖 Модель: {response.get('model', '?')}"
+            admin_marker = "\n\n" + t("AI_ANSWER_MODEL", lang, model=response.get("model", "?"))
 
-        # Ответ + кнопка «Закончить диалог»
+        hint_text = t("AI_ANSWER_HINT", lang)
         await message.answer(
-            f"🤖 ОТВЕТ АСТРОЛОГА:\n\n{answer}{admin_marker}\n\n"
-            f"💬 Можете задать следующий вопрос или нажать «🔚 Закончить диалог».",
-            reply_markup=ai_dialog_keyboard()
+            f"{t('AI_ANSWER_TITLE', lang)}\n\n{answer}{admin_marker}\n\n{hint_text}",
+            reply_markup=_ai_dialog_kb(lang)
         )
 
-        # Остаток лимита
         if limit != -1:
             new_usage = await get_ai_usage(user_id)
             left = max(0, limit - new_usage)
-            if left <= 5 and left > 0:
-                await message.answer(f"⚠️ У вас осталось {left} запросов на сегодня.")
+            if 0 < left <= 5:
+                await message.answer(t("AI_LEFT_5", lang, left=left))
             elif left == 0:
-                await message.answer("⚠️ Лимит вопросов исчерпан на сегодня.")
+                await message.answer(t("AI_LEFT_0", lang))
 
-        # Факты
         if facts:
             existing_notes = await get_user_notes(user_id)
             existing_texts = [n["note"] for n in existing_notes]
             new_facts = [f for f in facts if f not in existing_texts]
-
             if new_facts:
-                await show_facts_confirmation(message, state, new_facts)
+                await show_facts_confirmation(message, state, new_facts, lang)
             else:
-                await message.answer(
-                    "✅ Астролог заметил, что вы уже рассказывали об этом ранее."
-                )
+                await message.answer(t("AI_FACTS_ALREADY", lang))
         else:
             q_lower = message.text.lower()
-            personal_pronouns = ["я ", "мне ", "меня ", "мой ", "моя ", "мои "]
-            if any(p in q_lower for p in personal_pronouns):
+            pronouns = ["\u044f ", "\u043c\u043d\u0435 ", "\u043c\u0435\u043d\u044f ", "\u043c\u043e\u0439 ",
+                        "i ", "me ", "my ", "ich ", "mir ", "mein "]
+            if any(p in q_lower for p in pronouns):
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="👤 Заполнить профиль", callback_data="profile_edit")],
-                    [InlineKeyboardButton(text="🔚 Закончить диалог", callback_data="ai_end_dialog")],
+                    [InlineKeyboardButton(text=t("AI_FILL_PROFILE_BTN", lang), callback_data="profile_edit")],
+                    [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
                 ])
-                await message.answer(
-                    "💡 Хотите, чтобы астролог знал о вас больше?\n\n"
-                    "Заполните профиль — и ответы станут точнее.",
-                    reply_markup=keyboard
-                )
-
-        # ВАЖНО: FSM НЕ сбрасывается! Пользователь может продолжить.
+                await message.answer(t("AI_FILL_PROFILE_NOTE", lang), reply_markup=keyboard)
 
     except Exception as e:
         thinking_task.cancel()
-        logger.error(f"Ошибка AI: {e}")
+        logger.error(f"AI error: {e}")
         try:
-            await processing_msg.edit_text(
-                "❌ Произошла ошибка. Попробуйте позже.",
-                reply_markup=ai_dialog_keyboard()
-            )
+            await processing_msg.edit_text(t("AI_ERROR", lang), reply_markup=_ai_dialog_kb(lang))
         except Exception:
-            await message.answer(
-                "❌ Произошла ошибка.",
-                reply_markup=ai_dialog_keyboard()
-            )
+            await message.answer(t("AI_ERROR", lang), reply_markup=_ai_dialog_kb(lang))
 
 
-# ============================================================
-# ЗАКОНЧИТЬ ДИАЛОГ
-# ============================================================
 @router.callback_query(F.data == "ai_end_dialog")
 async def ai_end_dialog(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
     user_id = callback.from_user.id
+    lang = await _lang(user_id)
+    await state.clear()
     try:
         await callback.message.edit_text(
-            "✅ Диалог завершён.\n\n"
-            "Возвращайтесь, когда появятся вопросы! 🌟",
-            reply_markup=main_menu_keyboard(user_id)
+            t("AI_ENDED", lang),
+            reply_markup=main_menu_keyboard(user_id, lang)
         )
     except Exception:
         await callback.message.answer(
-            "✅ Диалог завершён.",
-            reply_markup=main_menu_keyboard(user_id)
+            t("AI_ENDED_SHORT", lang),
+            reply_markup=main_menu_keyboard(user_id, lang)
         )
 
 
-# ============================================================
-# ФАКТЫ
-# ============================================================
-async def show_facts_confirmation(message: Message, state: FSMContext, facts: list):
-    # Сохраняем факты в отдельном ключе FSM (не сбрасывая состояние диалога)
+async def show_facts_confirmation(message: Message, state: FSMContext, facts: list, lang: str):
     current_data = await state.get_data()
     current_data["pending_facts"] = facts
     current_data["pending_selected"] = list(range(len(facts)))
     await state.update_data(**current_data)
 
-    keyboard = _build_facts_keyboard(facts, list(range(len(facts))))
+    keyboard = _build_facts_keyboard(facts, list(range(len(facts))), lang)
     await message.answer(
-        "✨ АСТРОЛОГ ХОЧЕТ ЗАПОМНИТЬ О ВАС\n\n"
-        "Нажмите на факт, чтобы выбрать/убрать.\n"
-        "Затем нажмите «💾 Сохранить».",
+        t("AI_FACTS_TITLE", lang) + "\n\n" + t("AI_FACTS_HINT", lang),
         reply_markup=keyboard
     )
 
 
-def _build_facts_keyboard(facts: list, selected: list):
+def _build_facts_keyboard(facts: list, selected: list, lang: str):
     buttons = []
     for i, fact in enumerate(facts):
-        mark = "✅" if i in selected else "☐"
+        mark = "\u2705" if i in selected else "\u2610"
         short = fact[:40] + "..." if len(fact) > 40 else fact
         buttons.append([InlineKeyboardButton(
             text=f"{mark} {short}",
             callback_data=f"fact_toggle_{i}"
         )])
     buttons.append([
-        InlineKeyboardButton(text="💾 Сохранить", callback_data="facts_save"),
-        InlineKeyboardButton(text="❌ Не надо", callback_data="facts_cancel"),
+        InlineKeyboardButton(text=t("AI_FACTS_SAVE", lang), callback_data="facts_save"),
+        InlineKeyboardButton(text=t("AI_FACTS_SKIP", lang), callback_data="facts_cancel"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.callback_query(F.data.startswith("fact_toggle_"))
 async def fact_toggle(callback: CallbackQuery, state: FSMContext):
+    lang = await _lang(callback.from_user.id)
     data = await state.get_data()
     facts = data.get("pending_facts", [])
     selected = data.get("pending_selected", [])
     idx = int(callback.data.replace("fact_toggle_", ""))
-
     if idx in selected:
         selected.remove(idx)
     else:
         selected.append(idx)
-
     await state.update_data(pending_selected=selected)
     try:
         await callback.message.edit_reply_markup(
-            reply_markup=_build_facts_keyboard(facts, selected)
+            reply_markup=_build_facts_keyboard(facts, selected, lang)
         )
     except Exception:
         pass
@@ -317,63 +286,43 @@ async def fact_toggle(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "facts_save")
 async def facts_save(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    lang = await _lang(user_id)
     data = await state.get_data()
     facts = data.get("pending_facts", [])
     selected = data.get("pending_selected", [])
 
-    # Очищаем временные данные, НЕ сбрасывая FSM
     data["pending_facts"] = []
     data["pending_selected"] = []
     await state.update_data(**data)
 
     if not selected:
-        await callback.message.edit_text("❌ Ничего не сохранено.")
+        await callback.message.edit_text(t("AI_FACTS_NOTHING", lang))
         return
 
     saved = 0
     for idx in selected:
         if 0 <= idx < len(facts):
-            await add_user_note(callback.from_user.id, facts[idx])
+            await add_user_note(user_id, facts[idx])
             saved += 1
 
-    await callback.message.edit_text(
-        f"✅ Сохранено {saved} факт(ов).\n\n"
-        "Посмотреть: 👤 Профиль → 🧠 Заметки астролога."
-    )
+    await callback.message.edit_text(t("AI_FACTS_SAVED", lang, n=saved))
 
 
 @router.callback_query(F.data == "facts_cancel")
 async def facts_cancel(callback: CallbackQuery, state: FSMContext):
+    lang = await _lang(callback.from_user.id)
     data = await state.get_data()
     data["pending_facts"] = []
     data["pending_selected"] = []
     await state.update_data(**data)
+    await callback.message.edit_text(t("AI_FACTS_CANCELLED", lang))
 
-    await callback.message.edit_text("❌ Факты не сохранены.")
 
-
-# ============================================================
-# ПРИМЕРЫ
-# ============================================================
 @router.callback_query(F.data == "ai_examples")
 async def ai_examples(callback: CallbackQuery):
-    examples = (
-        "📝 ПРИМЕРЫ ВОПРОСОВ\n\n"
-        "🔮 О гороскопе:\n"
-        "  • Что ждёт меня на этой неделе?\n"
-        "  • Какой день лучший для важных дел?\n\n"
-        "💕 О любви:\n"
-        "  • Подходит ли мне партнёр-Скорпион?\n"
-        "  • Как улучшить отношения?\n\n"
-        "💼 О карьере:\n"
-        "  • Стоит ли менять работу?\n"
-        "  • Какая профессия мне подходит?\n\n"
-        "🌟 О себе:\n"
-        "  • Что говорит моя натальная карта?\n"
-        "  • Какие у меня сильные стороны?\n\n"
-        "✨ Задавайте свои вопросы!"
-    )
+    lang = await _lang(callback.from_user.id)
     try:
-        await callback.message.answer(examples)
+        await callback.message.answer(t("AI_EXAMPLES_TEXT", lang))
     except Exception as e:
-        logger.error(f"Ошибка ai_examples: {e}")
+        logger.error(f"ai_examples error: {e}")
