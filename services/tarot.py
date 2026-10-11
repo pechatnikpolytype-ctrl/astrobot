@@ -30,10 +30,10 @@ except Exception as e:
 # ============================================================
 # КЛЮЧИ И ВЫБОР КАРТ
 # ============================================================
-def _make_cache_key(user_id: int, question: str) -> str:
-    """Ключ кэша: user_id + вопрос + дата (сброс раз в день)."""
+def _make_cache_key(user_id: int, question: str, lang: str = "ru") -> str:
+    """Кэш-ключ: user_id + вопрос + дата + язык (сброс раз в день)."""
     today = date.today().isoformat()
-    raw = f"{user_id}|{question.lower().strip()}|{today}"
+    raw = f"{user_id}|{question.lower().strip()}|{today}|{lang}"
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
@@ -75,85 +75,96 @@ def _get_card_data(card_key: str) -> dict:
 # ============================================================
 # AI-ТОЛКОВАНИЕ
 # ============================================================
-async def _generate_ai_reading(user_id: int, question: str, cards: list) -> str:
-    """AI-толкование расклада."""
+async def _generate_ai_reading(user_id: int, question: str, cards: list, lang: str = "ru") -> str:
+    """AI tarot reading with lang support."""
     from ai_service_n1n import ai_service
     from database.postgres_db import get_user
+    from astrology_calculator import sign_display
 
-    # Карты для промпта
+    lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
+
+    # Cards info (localized names)
     cards_info = []
     for i, key in enumerate(cards, 1):
         data = _get_card_data(key)
         cards_info.append(
-            f"{i}. {data.get('ru', key)} — {data.get('upright', '')}"
+            f"{i}. {data.get('ru', key)} \u2014 {data.get('upright', '')}"
         )
     cards_text = "\n".join(cards_info)
 
-    # Профиль пользователя
+    # User context
     user = await get_user(user_id) or {}
-    zodiac = ""
+    zodiac_ru = ""
     if user.get("birth_date"):
         try:
             from astrology_calculator import AstrologyCalculator
             bd = datetime.strptime(user["birth_date"], "%Y-%m-%d")
-            zodiac = AstrologyCalculator.get_zodiac_sign(bd)
+            zodiac_ru = AstrologyCalculator.get_zodiac_sign(bd)
         except Exception:
             pass
 
     context_parts = []
     if user.get("first_name"):
-        context_parts.append(f"Имя: {user['first_name']}")
-    if zodiac:
-        context_parts.append(f"Знак зодиака: {zodiac}")
+        context_parts.append(f"Name: {user['first_name']}")
+    if zodiac_ru:
+        context_parts.append(f"Zodiac: {sign_display(zodiac_ru, lang)}")
     if user.get("bio"):
-        context_parts.append(f"О себе: {user['bio']}")
+        context_parts.append(f"About: {user['bio']}")
     if user.get("goals"):
-        context_parts.append(f"Цели: {user['goals']}")
+        context_parts.append(f"Goals: {user['goals']}")
 
-    # Семейное положение — ВАЖНО
     rel = (user.get("relationship_status") or "").strip()
     if rel:
-        context_parts.append(f"Семейное положение: {rel}")
+        context_parts.append(f"Relationship: {rel}")
     else:
-        context_parts.append("Семейное положение: НЕ УКАЗАНО (не предполагай наличие партнёра)")
+        context_parts.append("Relationship: NOT SPECIFIED (do not assume a partner)")
 
     context = "\n".join(context_parts) if context_parts else ""
 
     system_prompt = (
-        "Ты — опытный таролог с 20-летним стажем.\n"
-        "Требования:\n"
-        "- Отвечай тёпло, поддерживающе\n"
-        "- НЕ используй markdown (**, __, `)\n"
-        "- Используй эмодзи\n"
-        "- 5-7 предложений\n"
-        "- Ссылайся на выпавшие карты\n"
-        "- НЕ предсказывай точные даты\n"
-        "- НЕ давай медицинских/юридических советов\n"
-        "- В конце — небольшой совет\n"
-        "ВАЖНО:\n"
-        "- Учитывай СЕМЕЙНОЕ ПОЛОЖЕНИЕ из контекста\n"
-        "- Если у пользователя НЕТ партнёра — НЕ говори про 'партнёра', "
-        "говори про 'будущие отношения' или 'потенциального партнёра'\n"
-        "- Если партнёр ЕСТЬ — говори про отношения\n"
-        "- Если НЕ УКАЗАНО — пиши нейтрально (без предположений)\n"
+        "You are an experienced tarot reader with 20 years of practice.\n"
+        "Requirements:\n"
+        "- Answer warmly, supportively\n"
+        "- Do NOT use markdown (**, __, `)\n"
+        "- Use emoji\n"
+        "- 5-7 sentences\n"
+        "- Reference the drawn cards\n"
+        "- Do NOT predict exact dates\n"
+        "- Do NOT give medical/legal advice\n"
+        "- End with a short piece of advice\n"
+        "IMPORTANT:\n"
+        "- Consider the RELATIONSHIP status from context\n"
+        "- If user has NO partner \u2014 don't mention 'partner', "
+        "say 'future relationships' or 'potential partner'\n"
+        "- If partner EXISTS \u2014 speak about relationships\n"
+        "- If NOT SPECIFIED \u2014 be neutral (no assumptions)\n"
+        f"- IMPORTANT: Answer ONLY in {lang_name}\n"
     )
 
     context_block = ""
     if context:
-        context_block = "Контекст о пользователе:\n" + context
+        context_block = "User context:\n" + context
 
     user_prompt = (
-        f"Вопрос пользователя: {question}\n\n"
-        f"Выпавшие карты:\n{cards_text}\n\n"
+        f"User question: {question}\n\n"
+        f"Drawn cards:\n{cards_text}\n\n"
         f"{context_block}\n\n"
-        f"Дай развёрнутое толкование расклада для этого вопроса."
+        f"Give a detailed interpretation of the spread for this question, in {lang_name}."
     )
 
     answer = await ai_service._query_ai(system_prompt, user_prompt, max_tokens=800)
     if answer:
         answer = ai_service._clean_response(answer)
         return answer
-    return "✨ Карты дают вам важный знак. Прислушайтесь к своей интуиции — ответ уже внутри вас."
+
+    # Fallback by lang
+    fallback = {
+        "ru": "\u2728 \u041a\u0430\u0440\u0442\u044b \u0434\u0430\u044e\u0442 \u0432\u0430\u043c \u0432\u0430\u0436\u043d\u044b\u0439 \u0437\u043d\u0430\u043a. \u041f\u0440\u0438\u0441\u043b\u0443\u0448\u0430\u0439\u0442\u0435\u0441\u044c \u043a \u0438\u043d\u0442\u0443\u0438\u0446\u0438\u0438.",
+        "en": "\u2728 The cards give you an important sign. Listen to your intuition.",
+        "de": "\u2728 Die Karten geben dir ein wichtiges Zeichen. H\u00f6re auf deine Intuition.",
+    }.get(lang, "\u2728 Listen to your intuition.")
+    return fallback
+
 
 
 # ============================================================
@@ -223,18 +234,19 @@ def get_positions(question: str, lang: str = "ru") -> list:
             L("TAROT_POS_GENERIC_2").format(now=L("TAROT_LABEL_NOW")),
             L("TAROT_POS_GENERIC_3").format(future=L("TAROT_LABEL_FUTURE"))]
 
-async def get_or_create_reading(user_id: int, question: str, count: int = 3) -> dict:
+async def get_or_create_reading(user_id: int, question: str, count: int = 3, lang: str = "ru") -> dict:
     """
     Возвращает расклад для вопроса.
     - Одинаковый вопрос в один день = один и тот же расклад.
     - На следующий день — новый.
+    - Разные языки — разный кэш.
     """
     question = question.strip()
     if not question:
         return {"error": "Пустой вопрос"}
 
-    # Ключ кэша
-    cache_key = _make_cache_key(user_id, question)
+    # Ключ кэша (с языком)
+    cache_key = _make_cache_key(user_id, question, lang=lang)
 
     # Проверяем кэш
     existing = await get_tarot_reading(cache_key)
@@ -261,7 +273,7 @@ async def get_or_create_reading(user_id: int, question: str, count: int = 3) -> 
         return {"error": "Нет карт в базе"}
 
     # AI-толкование
-    ai_answer = await _generate_ai_reading(user_id, question, cards)
+    ai_answer = await _generate_ai_reading(user_id, question, cards, lang=lang)
 
     # Сохраняем
     try:

@@ -131,7 +131,7 @@ async def tarot_process_question(message: Message, state: FSMContext):
     processing = await message.answer(t("TAROT_PROCESSING", lang))
 
     try:
-        result = await get_or_create_reading(user_id, question, count=3)
+        result = await get_or_create_reading(user_id, question, count=3, lang=lang)
 
         if "error" in result:
             await processing.edit_text(t("TAROT_ERROR", lang, err=result["error"]))
