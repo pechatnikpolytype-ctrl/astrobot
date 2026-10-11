@@ -164,37 +164,64 @@ async def _generate_ai_reading(user_id: int, question: str, cards: list) -> str:
 # ============================================================
 # УМНЫЕ ПОЗИЦИИ ПО ТИПУ ВОПРОСА
 # ============================================================
-def get_positions(question: str) -> list:
-    """Возвращает список позиций карт в зависимости от вопроса."""
+def get_positions(question: str, lang: str = "ru") -> list:
+    """Return card positions depending on question and language."""
+    from locales import t
     q = question.lower()
 
-    # Любовь / отношения
-    if any(w in q for w in ["любов", "отношени", "партнёр", "партнер",
-                              "девушк", "парн", "жен", "муж", "брак", "свидан"]):
-        return ["💔 Что мешает", "💖 Что поможет", "✨ Перспектива"]
+    def L(key):
+        return t(key, lang)
 
-    # Работа / карьера / деньги
-    if any(w in q for w in ["работ", "карьер", "деньг", "бизнес",
-                              "проект", "начальник", "коллег", "зарплат"]):
-        return ["📉 Прошлое", "📊 Настоящее", "🚀 Будущее"]
+    if any(w in q for w in ["\u043b\u044e\u0431\u043e\u0432", "\u043e\u0442\u043d\u043e\u0448\u0435\u043d\u0438",
+                              "love", "relationship", "liebe", "beziehung",
+                              "\u043f\u0430\u0440\u0442\u043d\u0451\u0440", "\u043f\u0430\u0440\u0442\u043d\u0435\u0440",
+                              "partner", "\u0434\u0435\u0432\u0443\u0448\u043a", "\u043f\u0430\u0440\u043d",
+                              "\u0436\u0435\u043d", "\u043c\u0443\u0436", "\u0431\u0440\u0430\u043a", "\u0441\u0432\u0438\u0434\u0430\u043d",
+                              "girl", "boy", "wife", "husband", "marriage", "date",
+                              "frau", "mann", "ehe", "verabredung"]):
+        return [L("TAROT_POS_LOVE_1").format(block=L("TAROT_LABEL_BLOCK")),
+                L("TAROT_POS_LOVE_2").format(help=L("TAROT_LABEL_HELP")),
+                L("TAROT_POS_LOVE_3").format(prospect=L("TAROT_LABEL_PROSPECT"))]
 
-    # Здоровье
-    if any(w in q for w in ["здоров", "самочувств", "болезн", "энерг"]):
-        return ["🌿 Что беспокоит", "💊 Что поможет", "✨ Перспектива"]
+    if any(w in q for w in ["\u0440\u0430\u0431\u043e\u0442", "\u043a\u0430\u0440\u044c\u0435\u0440", "\u0434\u0435\u043d\u044c\u0433",
+                              "\u0431\u0438\u0437\u043d\u0435\u0441", "\u043f\u0440\u043e\u0435\u043a\u0442", "\u043d\u0430\u0447\u0430\u043b\u044c\u043d\u0438\u043a",
+                              "\u043a\u043e\u043b\u043b\u0435\u0433", "\u0437\u0430\u0440\u043f\u043b\u0430\u0442",
+                              "work", "career", "money", "business", "project", "boss", "salary",
+                              "arbeit", "karriere", "geld", "gesch\u00e4ft", "projekt", "chef", "gehalt"]):
+        return [L("TAROT_POS_WORK_1").format(past=L("TAROT_LABEL_PAST")),
+                L("TAROT_POS_WORK_2").format(now=L("TAROT_LABEL_NOW")),
+                L("TAROT_POS_WORK_3").format(future=L("TAROT_LABEL_FUTURE"))]
 
-    # Что ждёт / будущее (общий)
-    if any(w in q for w in ["ждёт", "ждет", "будет", "будущ", "перспектив",
-                              "случит", "произойд", "впереди"]):
-        return ["🕐 Ближайшее", "📅 Среднесрочное", "🔮 Дальнее"]
+    if any(w in q for w in ["\u0437\u0434\u043e\u0440\u043e\u0432", "\u0441\u0430\u043c\u043e\u0447\u0443\u0432\u0441\u0442\u0432",
+                              "\u0431\u043e\u043b\u0435\u0437\u043d", "\u044d\u043d\u0435\u0440\u0433",
+                              "health", "sick", "energy", "gesundheit", "krank", "energie"]):
+        return [L("TAROT_POS_HEALTH_1").format(worries=L("TAROT_LABEL_WORRIES")),
+                L("TAROT_POS_HEALTH_2").format(helps=L("TAROT_LABEL_HELPS")),
+                L("TAROT_POS_HEALTH_3").format(prospect=L("TAROT_LABEL_PROSPECT"))]
 
-    # Совет / как поступить
-    if any(w in q for w in ["совет", "поступ", "решен", "стоит ли", "как быть",
-                              "что делать", "помог"]):
-        return ["⚡ Сейчас", "💡 Совет", "🌟 Итог"]
+    if any(w in q for w in ["\u0436\u0434\u0451\u0442", "\u0436\u0434\u0435\u0442", "\u0431\u0443\u0434\u0435\u0442",
+                              "\u0431\u0443\u0434\u0443\u0449", "\u043f\u0435\u0440\u0441\u043f\u0435\u043a\u0442\u0438\u0432",
+                              "\u0441\u043b\u0443\u0447\u0438\u0442", "\u043f\u0440\u043e\u0438\u0437\u043e\u0439\u0434",
+                              "\u0432\u043f\u0435\u0440\u0435\u0434\u0438",
+                              "await", "future", "will happen", "prospect", "zukunft",
+                              "was kommt", "aussicht"]):
+        return [L("TAROT_POS_FUTURE_1").format(near=L("TAROT_LABEL_NEAR")),
+                L("TAROT_POS_FUTURE_2").format(mid=L("TAROT_LABEL_MID")),
+                L("TAROT_POS_FUTURE_3").format(far=L("TAROT_LABEL_FAR"))]
 
-    # По умолчанию
-    return ["🕐 Прошлое", "🕐 Настоящее", "🕐 Будущее"]
+    if any(w in q for w in ["\u0441\u043e\u0432\u0435\u0442", "\u043f\u043e\u0441\u0442\u0443\u043f",
+                              "\u0440\u0435\u0448\u0435\u043d", "\u0441\u0442\u043e\u0438\u0442 \u043b\u0438",
+                              "\u043a\u0430\u043a \u0431\u044b\u0442\u044c", "\u0447\u0442\u043e \u0434\u0435\u043b\u0430\u0442\u044c",
+                              "\u043f\u043e\u043c\u043e\u0433",
+                              "advice", "should", "decision", "what to do",
+                              "rat", "entscheidung"]):
+        return [L("TAROT_POS_ADVICE_1").format(now=L("TAROT_LABEL_NOW")),
+                L("TAROT_POS_ADVICE_2").format(advice=L("TAROT_LABEL_ADVICE")),
+                L("TAROT_POS_ADVICE_3").format(total=L("TAROT_LABEL_TOTAL"))]
 
+    return [L("TAROT_POS_GENERIC_1").format(past=L("TAROT_LABEL_PAST")),
+            L("TAROT_POS_GENERIC_2").format(now=L("TAROT_LABEL_NOW")),
+            L("TAROT_POS_GENERIC_3").format(future=L("TAROT_LABEL_FUTURE"))]
 
 async def get_or_create_reading(user_id: int, question: str, count: int = 3) -> dict:
     """
