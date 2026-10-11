@@ -209,22 +209,21 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
         from ai_service_n1n import ai_service
 
         mood_text = f"{mood_emoji(mood)} {mood_name(mood, lang)}"
-        # AI prompt - keep simple RU prompt for now, AI will be updated in 3.5
         prompt = (
-            f"User mood: {mood}/5\n"
-            f"User message: {text}\n\n"
-            f"Respond as a caring astrologer in 3-5 sentences, no markdown."
+            f"My mood today: {mood}/5 ({mood_text}).\n"
+            f"My message: {text}\n\n"
+            f"Respond as a caring astrologer. Give 1-2 short tips based on mood."
         )
 
         ai_response = None
         try:
-            ai_response = await ai_service._query_ai(
-                "You are a caring astrologer. Respond warmly, supportive, up to 5 sentences. No markdown.",
-                prompt,
-                max_tokens=500,
+            result_dict = await ai_service.process_question(
+                user_id=user_id,
+                question=prompt,
+                use_cache=False,
+                lang=lang,
             )
-            if ai_response:
-                ai_response = ai_service._clean_response(ai_response)
+            ai_response = result_dict.get("message")
         except Exception as e:
             logger.error(f"mood AI error: {e}")
 
@@ -241,7 +240,7 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
 
         facts = []
         try:
-            facts = await ai_service.extract_user_facts(text, ai_response or "")
+            facts = await ai_service.extract_user_facts(text, ai_response or "", lang=lang)
         except Exception as e:
             logger.debug(f"extract facts error: {e}")
 

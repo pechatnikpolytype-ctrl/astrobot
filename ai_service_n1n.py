@@ -48,7 +48,7 @@ class N1NService:
     # ГЛАВНЫЙ МЕТОД
     # ============================================================
     async def process_question(self, user_id: int, question: str,
-                                use_cache: bool = True) -> Dict[str, Any]:
+                                use_cache: bool = True, lang: str = "ru") -> Dict[str, Any]:
         try:
             user_data = await get_user(user_id) or {}
             qtype = self._detect_question_type(question)
@@ -59,6 +59,7 @@ class N1NService:
                 qtype=qtype,
                 user_data=user_data,
                 is_time_dependent=is_time_dep,
+                lang=lang,
             )
 
             # Кэш
@@ -79,8 +80,8 @@ class N1NService:
             if qtype == "personal":
                 context = await self._build_context(user_id, user_data)
 
-            system_prompt = self._get_system_prompt(qtype)
-            user_prompt = self._build_user_prompt(question, context)
+            system_prompt = self._get_system_prompt(qtype, lang=lang)
+            user_prompt = self._build_user_prompt(question, context, lang=lang)
 
             answer = await self._query_ai(system_prompt, user_prompt)
 
@@ -109,7 +110,7 @@ class N1NService:
             facts = []
             if qtype == "personal":
                 try:
-                    facts = await self.extract_user_facts(question, answer)
+                    facts = await self.extract_user_facts(question, answer, lang=lang)
                     logger.info(f"📝 Извлечено фактов: {len(facts)}")
                 except Exception as e:
                     logger.warning(f"Ошибка извлечения фактов: {e}")
@@ -137,19 +138,20 @@ class N1NService:
     # КЛЮЧ КЭША
     # ============================================================
     def _build_cache_key(self, question: str, qtype: str,
-                         user_data: Dict, is_time_dependent: bool) -> str:
+                         user_data: Dict, is_time_dependent: bool,
+                         lang: str = "ru") -> str:
         q_hash = self._hash(question)
         today = datetime.now().strftime("%Y-%m-%d")
 
         if qtype == "personal":
             profile_hash = self._get_profile_hash(user_data)
             if is_time_dependent:
-                return f"personal_{q_hash}_{profile_hash}_{today}"
-            return f"personal_{q_hash}_{profile_hash}"
+                return f"personal_{q_hash}_{profile_hash}_{today}_{lang}"
+            return f"personal_{q_hash}_{profile_hash}_{lang}"
         else:
             if is_time_dependent:
-                return f"general_{q_hash}_{today}"
-            return f"general_{q_hash}"
+                return f"general_{q_hash}_{today}_{lang}"
+            return f"general_{q_hash}_{lang}"
 
     def _is_time_dependent(self, question: str) -> bool:
         q_lower = question.lower()

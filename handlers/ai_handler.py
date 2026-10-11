@@ -156,7 +156,7 @@ async def process_ai_question(message: Message, state: FSMContext):
     thinking_task = asyncio.create_task(update_thinking())
 
     try:
-        response = await ai_service.process_question(user_id, result)
+        response = await ai_service.process_question(user_id, result, lang=lang)
         thinking_task.cancel()
 
         try:

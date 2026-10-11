@@ -1,0 +1,97 @@
+=== def _get_system_prompt ===
+def _get_system_prompt(self, qtype: str) -> str:
+        base = (
+            "Ты — профессиональный астролог с 20-летним опытом.\n"
+            "Требования:\n"
+            "- НЕ используй markdown (**, __, `)\n"
+            "- Используй эмодзи для оформления\n"
+            "- Тон: тёплый, дружелюбный, поддерживающий\n"
+            "- Отвечай на русском\n"
+            "- НЕ упоминай конкретные числа месяца\n"
+        )
+        if qtype == "personal":
+            return base + (
+                "\nУчитывай ИНФОРМАЦИЮ О ПОЛЬЗОВАТЕЛЕ ниже.\n"
+                "Отвечай персонально, обращайся по имени, учитывай цели.\n"
+                "4-6 предложений, по делу."
+            )
+        return base + "\nОтвечай информативно, 4-6 предложений."
+
+
+=== def _build_user_prompt ===
+def _build_user_prompt(self, question: str, context: str) -> str:
+        if context:
+            return f"{context}\n\nВопрос пользователя: {question}"
+        return f"Вопрос пользователя: {question}"
+
+    # ============================================================
+    # ЗАПРОС К AI
+    # ============================================================
+
+=== def _build_cache_key ===
+def _build_cache_key(self, question: str, qtype: str,
+                         user_data: Dict, is_time_dependent: bool) -> str:
+        q_hash = self._hash(question)
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        if qtype == "personal":
+            profile_hash = self._get_profile_hash(user_data)
+            if is_time_dependent:
+                return f"personal_{q_hash}_{profile_hash}_{today}"
+            return f"personal_{q_hash}_{profile_hash}"
+        else:
+            if is_time_dependent:
+                return f"general_{q_hash}_{today}"
+            return f"general_{q_hash}"
+
+
+=== async def extract_user_facts ===
+async def extract_user_facts(self, question: str, answer: str) -> List[str]:
+        """Извлекает факты о пользователе из диалога."""
+        system_prompt = (
+            "Ты — анализатор личных фактов. Извлеки факты из СООБЩЕНИЯ пользователя.\n\n"
+            "Примеры:\n"
+            "• «Я программист» → [\"Работает программистом\"]\n"
+            "• «Люблю кофе» → [\"Любит кофе\"]\n"
+            "• «Мне 30 лет» → [\"Возраст: 30 лет\"]\n"
+            "• «У меня двое детей» → [\"Есть двое детей\"]\n"
+            "• «Живу в Москве» → [\"Живёт в Москве\"]\n"
+            "• «Занимаюсь спортом» → [\"Занимается спортом\"]\n"
+            "• «Хочу найти работу» → [\"Хочет найти работу\"]\n\n"
+            "НЕ включай:\n"
+            "• вопросы пользователя («Что меня ждёт?»)\n"
+            "• предположения AI\n"
+            "• общие фразы («интересно», «подскажи»)\n"
+            "• эмоции без контекста\n\n"
+            "ВАЖНО: если пользователь пишет утверждение о себе — это факт. "
+            "Даже если это короткая фраза без вопроса.\n\n"
+            "Формат: JSON-массив строк.\n"
+            "Пример: [\"Работает в IT\", \"Любит кофе\"]\n"
+            "Если фактов НЕТ — верни [].\n"
+            "Максимум 3 факта, каждый до 100 символов."
+        )
+
+        user_prompt = (
+            f"Сообщение пользователя: {question}\n"
+            f"Ответ AI: {answer}\n\n"
+            f"Извлеки факты о пользователе (только утверждения о СЕБЕ)."
+        )
+
+        raw = await self._query_ai(system_prompt, user_prompt, max_tokens=200)
+        if not raw:
+            return []
+
+        try:
+            match = re.search(r"\[.*?\]", raw, re.DOTALL)
+            if match:
+                facts = json.loads(match.group())
+                if isinstance(facts, list):
+                    return [str(f)[:100] for f in facts[:3]]
+        except Exception as e:
+            logger.debug(f"Парсинг фактов: {e}")
+
+        return []
+
+    # ============================================================
+    # КОНТЕКСТ ПРОФИЛЯ
+    # ============================================================

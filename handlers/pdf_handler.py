@@ -130,7 +130,7 @@ async def pdf_horoscope(callback: CallbackQuery):
                 f" упоминай конкретные числа и даты. 5-7 предложений."
             )
 
-        response = await ai_service.process_question(user_id, prompt)
+        response = await ai_service.process_question(user_id, prompt, lang=lang)
         horoscope_text = response.get("message", "-")
 
         pdf_data = {
