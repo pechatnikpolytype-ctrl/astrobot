@@ -695,8 +695,9 @@ async def set_trial(enabled: bool, days: int):
 # ============================================================
 # HOROSCOPE CACHE
 # ============================================================
-async def get_daily_horoscope():
-    data = await get_setting("daily_horoscope")
+async def get_daily_horoscope(lang: str = "ru"):
+    key = f"daily_horoscope_{lang}"
+    data = await get_setting(key)
     if not data or not isinstance(data, dict):
         return None
     today = datetime.now().strftime("%Y-%m-%d")
@@ -705,9 +706,10 @@ async def get_daily_horoscope():
     return None
 
 
-async def set_daily_horoscope(text: str):
+async def set_daily_horoscope(text: str, lang: str = "ru"):
+    key = f"daily_horoscope_{lang}"
     today = datetime.now().strftime("%Y-%m-%d")
-    await set_setting("daily_horoscope", {"date": today, "text": text})
+    await set_setting(key, {"date": today, "text": text})
 
 
 # ============================================================

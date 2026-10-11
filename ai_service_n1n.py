@@ -372,90 +372,74 @@ class N1NService:
     # ============================================================
     # ГОРОСКОП
     # ============================================================
-    async def generate_horoscope(self) -> Optional[str]:
+    async def generate_horoscope(self, lang: str = "ru") -> Optional[str]:
         today = datetime.now().strftime("%d.%m.%Y")
+        lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
+
         system_prompt = (
-            "Ты — профессиональный астролог. Составь красивый астрологический гороскоп на сегодня.\n"
-            "Требования:\n"
-            "- НЕ используй markdown (**, __, `)\n"
-            "- Используй эмодзи в начале блоков\n"
-            "- Разделяй блоки пустой строкой\n"
-            "- НЕ упоминай конкретные знаки зодиака\n"
-            "- НЕ упоминай числа и даты\n"
-            "- Тон: дружелюбный, тёплый\n"
+            "You are a professional astrologer. Compose a beautiful astrological horoscope for today.\n"
+            "Requirements:\n"
+            "- Do NOT use markdown (**, __, `)\n"
+            "- Use emoji at the start of blocks\n"
+            "- Separate blocks with a blank line\n"
+            "- Do NOT mention specific zodiac signs\n"
+            "- Do NOT mention numbers and dates\n"
+            "- Tone: friendly, warm\n"
+            f"- IMPORTANT: Answer ONLY in {lang_name}\n"
         )
-        user_prompt = f"""Составь астрологический гороскоп на {today}.
-
-Структура:
-🌅 ОБЩИЙ ПРОГНОЗ
-[3-4 предложения]
-
-💫 ПЛАНЕТАРНЫЕ ВЛИЯНИЯ
-[2-3 предложения]
-
-💖 ЛЮБОВЬ И ОТНОШЕНИЯ
-[2-3 предложения]
-
-💼 КАРЬЕРА И ФИНАНСЫ
-[2-3 предложения]
-
-🌿 ЗДОРОВЬЕ
-[2-3 предложения]
-
-💡 СОВЕТ ДНЯ
-[1-2 предложения]
-
-✨ АСТРОЛОГИЧЕСКИЙ ФАКТ
-[1 предложение]
-
-Без markdown, с эмодзи."""
+        user_prompt = (
+            f"Compose an astrological horoscope for {today}.\n\n"
+            "Structure:\n"
+            "\U0001F305 GENERAL FORECAST\n[3-4 sentences]\n\n"
+            "\U0001F4AB PLANETARY INFLUENCES\n[2-3 sentences]\n\n"
+            "\U0001F496 LOVE AND RELATIONSHIPS\n[2-3 sentences]\n\n"
+            "\U0001F4BC CAREER AND FINANCE\n[2-3 sentences]\n\n"
+            "\U0001F33F HEALTH\n[2-3 sentences]\n\n"
+            "\U0001F4A1 ADVICE OF THE DAY\n[1-2 sentences]\n\n"
+            "\u2728 ASTROLOGICAL FACT\n[1 sentence]\n\n"
+            f"No markdown, with emoji. All text in {lang_name}."
+        )
         answer = await self._query_ai(system_prompt, user_prompt)
         return self._clean_response(answer) if answer else None
 
     # ============================================================
     # СОВМЕСТИМОСТЬ
     # ============================================================
-    async def generate_compatibility(self, sign1: str, sign2: str) -> Optional[Dict[str, Any]]:
+    async def generate_compatibility(self, sign1: str, sign2: str, lang: str = "ru") -> Optional[Dict[str, Any]]:
+        lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
+
         system_prompt = (
-            "Ты — профессиональный астролог. Проанализируй совместимость знаков.\n"
-            "Требования:\n"
-            "- НЕ используй markdown\n"
-            "- Используй эмодзи\n"
-            "- Тон: дружелюбный, поддерживающий\n"
+            "You are a professional astrologer. Analyze compatibility of two signs.\n"
+            "Requirements:\n"
+            "- Do NOT use markdown\n"
+            "- Use emoji\n"
+            "- Friendly, supportive tone\n"
+            f"- IMPORTANT: TEXT and LEVEL must be in {lang_name}\n"
         )
-        user_prompt = f"""Совместимость: {sign1} и {sign2}.
 
-Верни СТРОГО:
+        user_prompt = (
+            f"Compatibility: {sign1} and {sign2}.\n\n"
+            "Return STRICTLY (in this format):\n\n"
+            "SCORE: [number 0-100]\n"
+            "LEVEL: [short level text in " + lang_name + "]\n"
+            "TEXT:\n"
+            "\U0001F495 " + ("ANALYSIS" if lang == "en" else ("ANALYSE" if lang == "de" else "\u0410\u041d\u0410\u041b\u0418\u0417")) + "\n\n"
+            "\u2728 Elements, planets, qualities\n\n"
+            "\U0001F30A Element harmony: [1-2 sentences]\n\n"
+            "\u2705 Strengths: [list]\n\n"
+            "\u26A0\uFE0F Weaknesses: [list]\n\n"
+            "\U0001F4AB Recommendation: [1-2 sentences]\n\n"
+            f"All TEXT in {lang_name}.\n"
+            "Nothing besides this format."
+        )
 
-SCORE: [число 0-100]
-LEVEL: [Идеальная / Отличная / Хорошая / Средняя / Сложная совместимость]
-TEXT:
-💕 АНАЛИЗ СОВМЕСТИМОСТИ
-
-✨ АСТРОЛОГИЧЕСКИЕ ДАННЫЕ:
-[стихии, планеты, качества]
-
-🌊 ГАРМОНИЯ СТИХИЙ:
-[1-2 предложения]
-
-✅ СИЛЬНЫЕ СТОРОНЫ:
-[список]
-
-⚠️ СЛАБЫЕ СТОРОНЫ:
-[список]
-
-💫 РЕКОМЕНДАЦИЯ:
-[1-2 предложения]
-
-🔮 Помните: астрология — это руководство, а не приговор.
-
-Ничего кроме формата."""
         answer = await self._query_ai(system_prompt, user_prompt)
         if not answer:
             return None
+
         try:
             score = 75
-            level = "Хорошая совместимость"
+            level = "Good"
             text = answer
             for line in answer.split("\n"):
                 if line.startswith("SCORE:"):
@@ -474,16 +458,13 @@ TEXT:
                 "text": self._clean_response(text),
             }
         except Exception as e:
-            logger.error(f"Парсинг совместимости: {e}")
+            logger.error(f"compat parsing: {e}")
             return {
                 "score": 75,
-                "level": "Совместимость",
+                "level": "Compatibility",
                 "text": self._clean_response(answer),
             }
 
-    # ============================================================
-    # НАТАЛЬНАЯ КАРТА
-    # ============================================================
     async def generate_natal_interpretation(self, chart_data: Dict[str, Any], lang: str = "ru") -> Optional[str]:
         info = chart_data.get("birth_info", {})
         planets = chart_data.get("planets", [])

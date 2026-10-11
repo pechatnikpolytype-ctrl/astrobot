@@ -28,7 +28,7 @@ async def daily_horoscope_handler(callback: CallbackQuery):
     lang = await _lang(user_id)
     today_str = datetime.now().strftime("%d.%m.%Y")
 
-    cached = await get_daily_horoscope()
+    cached = await get_daily_horoscope(lang=lang)
     if cached:
         logger.info(t("HOROSCOPE_CACHE_LOG", lang))
         try:
@@ -60,7 +60,7 @@ async def daily_horoscope_handler(callback: CallbackQuery):
         text = None
 
     if text:
-        await set_daily_horoscope(text)
+        await set_daily_horoscope(text, lang=lang)
         logger.info(f"new horoscope saved: {len(text)} chars")
     else:
         logger.warning("horoscope fallback")
