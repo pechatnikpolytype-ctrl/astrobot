@@ -287,12 +287,13 @@ async def admin_ai(callback: CallbackQuery):
 
 @router.callback_query(F.data == "ai_set_free")
 async def ai_set_free_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     limits = await get_ai_limits()
     await state.set_state(AdminStates.waiting_ai_limit_free)
     await callback.message.edit_text(
-        f"✏️ Free: {limits['free']}\n\nВведите новое значение (0 = отключить, -1 = без лимита):\n\n/cancel — отмена"
+        t("ADMIN_AI_FREE_EDIT", lang, limit=limits['free'])
     )
 
 
@@ -322,12 +323,13 @@ async def ai_set_free_save(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "ai_set_premium")
 async def ai_set_premium_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     limits = await get_ai_limits()
     await state.set_state(AdminStates.waiting_ai_limit_premium)
     await callback.message.edit_text(
-        f"✏️ Premium: {limits['premium']}\n\nВведите новое (0 = отключить, -1 = без лимита):\n\n/cancel — отмена"
+        t("ADMIN_AI_PREMIUM_EDIT", lang, limit=limits['premium'])
     )
 
 
@@ -393,9 +395,9 @@ async def admin_trial(callback: CallbackQuery):
         return
     trial = await get_trial()
     used_count = await count_trial_used()
-    status = "✅ ВКЛ" if trial.get("enabled") else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if trial.get("enabled") else t("ADMIN_TRIAL_OFF", lang)
     text = t("ADMIN_TRIAL_TITLE", lang) + "\n\n" + t("ADMIN_TRIAL_STATUS", lang, status=status) + "\n" + t("ADMIN_TRIAL_DURATION", lang, days=trial.get('days', 1)) + "\n" + t("ADMIN_TRIAL_USED", lang, count=used_count)
-    toggle = "❌ Выключить" if trial.get("enabled") else "✅ Включить"
+    toggle = t("ADMIN_TRIAL_TOGGLE_OFF", lang) if trial.get("enabled") else t("ADMIN_TRIAL_TOGGLE_ON", lang)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle, callback_data="trial_toggle")],
         [InlineKeyboardButton(text=t("ADMIN_BTN_TRIAL_DURATION", lang), callback_data="trial_change_days")],
@@ -486,6 +488,7 @@ async def trial_reset_do(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_pricing")
 async def admin_pricing(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     pricing = await get_pricing()
@@ -505,6 +508,7 @@ async def admin_pricing(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("price_edit_"))
 async def price_edit_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     plan = callback.data.replace("price_edit_", "")
@@ -515,6 +519,7 @@ async def price_edit_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_price_days)
 async def price_edit_days(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
@@ -535,6 +540,7 @@ async def price_edit_days(message: Message, state: FSMContext):
 
 @router.message(AdminStates.waiting_price_stars)
 async def price_edit_stars(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
@@ -562,6 +568,7 @@ async def price_edit_stars(message: Message, state: FSMContext):
 # ============================================================
 @router.callback_query(F.data == "admin_balance")
 async def admin_balance(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     stats = await get_stats()
@@ -607,6 +614,7 @@ async def admin_withdraw(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_tariff_stats
@@ -649,6 +657,7 @@ async def admin_stats(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_users")
 async def admin_users(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     pool = await db.create_pool()
@@ -675,6 +684,7 @@ async def admin_users(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_search_user")
 async def admin_search_user(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     await callback.message.edit_text(t("ADMIN_USERS_ENTER_ID", lang))
@@ -683,6 +693,7 @@ async def admin_search_user(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_search)
 async def process_user_search(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if not await is_admin(message.from_user.id):
         return
     try:
@@ -713,6 +724,7 @@ async def process_user_search(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("reset_trial_"))
 async def reset_user_trial(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     user_id = int(callback.data.split("_")[2])
@@ -727,6 +739,7 @@ async def reset_user_trial(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_subs")
 async def admin_subs(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     today = datetime.now().strftime("%Y-%m-%d")
@@ -755,6 +768,7 @@ async def admin_subs(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_give_sub")
 async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     await callback.message.edit_text(t("ADMIN_SUBS_ENTER_ID", lang))
@@ -763,6 +777,7 @@ async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_user_id)
 async def process_user_id_for_sub(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if not await is_admin(message.from_user.id):
         return
     try:
@@ -789,6 +804,7 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("sub_"))
 async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     days_map = {"sub_7": 7, "sub_30": 30, "sub_90": 90, "sub_365": 365}
@@ -810,6 +826,7 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("add_sub_"))
 async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     user_id = int(callback.data.split("_")[2])
@@ -830,6 +847,7 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
 # ============================================================
 @router.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     await callback.message.edit_text(t("ADMIN_BROADCAST_ENTER", lang))
@@ -838,6 +856,7 @@ async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_broadcast)
 async def process_broadcast(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
@@ -868,12 +887,13 @@ async def process_broadcast(message: Message, state: FSMContext):
 # ============================================================
 @router.callback_query(F.data == "admin_reminders")
 async def admin_reminders(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_reminder_settings
     settings = await get_reminder_settings()
     enabled = settings.get("enabled", True)
-    status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if enabled else t("ADMIN_TRIAL_OFF", lang)
 
     text = (
         f"{t('ADMIN_REMINDERS_TITLE', lang)}\n\n"
@@ -899,6 +919,7 @@ async def admin_reminders(callback: CallbackQuery):
 
 @router.callback_query(F.data == "reminders_toggle")
 async def reminders_toggle(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_reminder_settings, set_reminder_settings
@@ -911,6 +932,7 @@ async def reminders_toggle(callback: CallbackQuery):
 
 @router.callback_query(F.data == "reminders_test")
 async def reminders_test(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     try:
@@ -939,7 +961,7 @@ async def admin_cleanup(callback: CallbackQuery):
     settings = await get_cache_cleanup_settings()
     stats = await get_ai_cache_stats()
     enabled = settings.get("enabled", True)
-    status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if enabled else t("ADMIN_TRIAL_OFF", lang)
 
     text = (
         f"{t('ADMIN_CLEANUP_TITLE', lang)}\n\n"
@@ -967,6 +989,7 @@ async def admin_cleanup(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cleanup_toggle")
 async def cleanup_toggle(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_cache_cleanup_settings, set_cache_cleanup_settings
@@ -1012,7 +1035,7 @@ async def admin_daily_facts(callback: CallbackQuery):
     total = await count_all_users()
 
     enabled = settings.get("enabled", True)
-    status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if enabled else t("ADMIN_TRIAL_OFF", lang)
 
     text = (
         f"{t('ADMIN_DAILY_FACTS_TITLE', lang)}\n\n"

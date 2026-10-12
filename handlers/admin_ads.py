@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from config import ADMINS
+from locales import t
 from database.postgres_db import (
     get_ads_config, set_ads_config,
     get_all_ads, get_ad, add_ad, update_ad, delete_ad, toggle_ad,
@@ -34,8 +35,20 @@ class AdStates(StatesGroup):
 # ============================================================
 # МЕНЮ РЕКЛАМЫ
 # ============================================================
+async def _admin_lang(user_id: int) -> str:
+    try:
+        from config import MULTILANG_ENABLED
+        if not MULTILANG_ENABLED:
+            return "ru"
+        from database.postgres_db import get_user_lang_cached
+        return await get_user_lang_cached(user_id)
+    except Exception:
+        return "ru"
+
+
 @router.callback_query(F.data == "admin_ads")
 async def admin_ads_menu(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if callback.from_user.id not in ADMINS:
         return
 
@@ -43,37 +56,37 @@ async def admin_ads_menu(callback: CallbackQuery):
     ads = await get_all_ads()
     stats = await get_all_ad_stats(days=7)
 
-    status = "✅ ВКЛ" if config.get("enabled") else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if config.get("enabled") else t("ADMIN_TRIAL_OFF", lang)
     freq_map = {
-        "always": "Всегда",
-        "daily": "1 раз в день",
-        "every_n": f"Каждый {config.get('frequency_value', 5)}-й раз",
+        "always": t("ADS_FREQ_ALWAYS", lang),
+        "daily": t("ADS_FREQ_DAILY", lang),
+        "every_n": t("ADS_FREQ_EVERY_N", lang, n=config.get('frequency_value', 5)),
     }
     freq_text = freq_map.get(config.get("frequency", "daily"), "?")
 
     text = (
-        f"📢 УПРАВЛЕНИЕ РЕКЛАМОЙ\n\n"
-        f"Статус: {status}\n"
-        f"Место: 🏠 Меню\n"
-        f"Частота: {freq_text}\n"
-        f"Лимит: {config.get('max_per_day', 3)} показов/день\n"
-        f"Админам: {'показывать' if config.get('show_to_admins') else 'не показывать'}\n\n"
-        f"📊 За 7 дней:\n"
-        f"  • Показов: {stats['shows']}\n"
-        f"  • Кликов: {stats['clicks']}\n"
+        f"{t('ADS_MENU_TITLE', lang)}\n\n"
+        f"{t('ADS_CONFIG_ENABLED', lang, status=status)}\n"
+        f"{t('ADS_PLACE_MENU', lang)}\n"
+        f"{t('ADS_CONFIG_FREQ', lang, freq=freq_text)}\n"
+        f"{t('ADS_CONFIG_MAXDAY', lang, count=config.get('max_per_day', 3))}\n"
+        f"{t('ADS_CONFIG_ADMINS', lang, mode=(t('ADS_CONFIG_ADMINS_SHOW', lang) if config.get('show_to_admins') else t('ADS_CONFIG_ADMINS_HIDE', lang)))}\n\n"
+        f"{t('ADS_STATS_7D', lang)}\n"
+        f"  \u2022 {t('ADS_STATS_SHOWS', lang, count=stats['shows'])}\n"
+        f"  \u2022 {t('ADS_STATS_CLICKS', lang, count=stats['clicks'])}\n"
         f"  • CTR: {stats['ctr']}%\n\n"
-        f"Активных блоков: {len([a for a in ads if a['enabled']])} / {len(ads)}"
+        f"{t('ADS_STATS_ACTIVE', lang, active=len([a for a in ads if a['enabled']]), total=len(ads))}"
     )
 
-    toggle_text = "❌ Выключить рекламу" if config.get("enabled") else "✅ Включить рекламу"
+    toggle_text = t("ADS_BTN_DISABLE", lang) if config.get("enabled") else t("ADS_BTN_ENABLE", lang)
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle_text, callback_data="ads_toggle_all")],
-        [InlineKeyboardButton(text="➕ Добавить блок", callback_data="ads_add")],
-        [InlineKeyboardButton(text="📋 Список блоков", callback_data="ads_list")],
-        [InlineKeyboardButton(text="⚙️ Настройки показа", callback_data="ads_settings")],
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="ads_stats")],
-        [InlineKeyboardButton(text="📖 Инструкция", callback_data="ads_help")],
+        [InlineKeyboardButton(text=t("ADS_BTN_ADD", lang), callback_data="ads_add")],
+        [InlineKeyboardButton(text=t("ADS_BTN_LIST", lang), callback_data="ads_list")],
+        [InlineKeyboardButton(text=t("ADS_BTN_SETTINGS", lang), callback_data="ads_settings")],
+        [InlineKeyboardButton(text=t("ADS_BTN_STATS", lang), callback_data="ads_stats")],
+        [InlineKeyboardButton(text=t("ADS_BTN_HELP", lang), callback_data="ads_help")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
 
@@ -88,13 +101,14 @@ async def admin_ads_menu(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "ads_toggle_all")
 async def ads_toggle_all(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if callback.from_user.id not in ADMINS:
         return
     config = await get_ads_config()
     new_state = not config.get("enabled", False)
     await set_ads_config(enabled=new_state)
     await callback.answer(
-        "✅ Реклама включена" if new_state else "❌ Реклама выключена",
+        t("ADS_ENABLED_ON", lang) if new_state else t("ADS_ENABLED_OFF", lang),
         show_alert=True,
     )
     await admin_ads_menu(callback)
@@ -105,18 +119,19 @@ async def ads_toggle_all(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "ads_list")
 async def ads_list(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if callback.from_user.id not in ADMINS:
         return
     ads = await get_all_ads()
 
     if not ads:
-        text = "📋 СПИСОК БЛОКОВ\n\nПока пусто. Добавь первый блок!"
+        text = t("ADS_LIST_EMPTY", lang)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить", callback_data="ads_add")],
+            [InlineKeyboardButton(text=t("ADS_BTN_ADD", lang), callback_data="ads_add")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ads")],
         ])
     else:
-        text = "📋 СПИСОК БЛОКОВ\n\n"
+        text = t("ADS_LIST_HEADER", lang) + "\n\n"
         buttons = []
         for a in ads:
             status = "✅" if a["enabled"] else "❌"
@@ -125,7 +140,7 @@ async def ads_list(callback: CallbackQuery):
                 text=f"{status} #{a['id']} {short}",
                 callback_data=f"ads_view_{a['id']}"
             )])
-        buttons.append([InlineKeyboardButton(text="➕ Добавить", callback_data="ads_add")])
+        buttons.append([InlineKeyboardButton(text=t("ADS_BTN_ADD", lang), callback_data="ads_add")])
         buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ads")])
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -137,40 +152,41 @@ async def ads_list(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("ads_view_"))
 async def ads_view(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if callback.from_user.id not in ADMINS:
         return
     ad_id = int(callback.data.replace("ads_view_", ""))
     ad = await get_ad(ad_id)
     if not ad:
-        await callback.answer("Не найден", show_alert=True)
+        await callback.answer(t("ADS_NOT_FOUND", lang), show_alert=True)
         return
 
     stats = await get_ad_stats(ad_id, days=7)
-    status = "✅ ВКЛ" if ad["enabled"] else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if ad["enabled"] else t("ADMIN_TRIAL_OFF", lang)
 
     text = (
-        f"📢 БЛОК #{ad['id']}\n\n"
-        f"Статус: {status}\n"
-        f"Вес: {ad.get('weight', 1)}\n\n"
-        f"📝 Текст:\n{ad['text']}\n\n"
-        f"🔗 Ссылка: {ad.get('link') or '(нет)'}\n"
-        f"🔘 Кнопка: {ad.get('button_text', 'Подробнее')}\n\n"
-        f"📊 За 7 дней:\n"
-        f"  • Показов: {stats['shows']}\n"
-        f"  • Кликов: {stats['clicks']}\n"
+        f"{t('ADS_VIEW_TITLE', lang, id=ad['id'])}\n\n"
+        f"{t('ADS_CONFIG_ENABLED', lang, status=status)}\n"
+        f"{t('ADS_VIEW_WEIGHT', lang, n=ad.get('weight', 1))}\n\n"
+        f"{t('ADS_VIEW_TEXT', lang, text=ad['text'])}\n\n"
+        f"{t('ADS_VIEW_LINK', lang, link=ad.get('link') or t('ADS_VIEW_LINK_NONE', lang))}\n"
+        f"{t('ADS_VIEW_BUTTON', lang, text=ad.get('button_text', t('ADS_BTN_DEFAULT', lang)))}\n\n"
+        f"{t('ADS_STATS_7D', lang)}\n"
+        f"  \u2022 {t('ADS_STATS_SHOWS', lang, count=stats['shows'])}\n"
+        f"  \u2022 {t('ADS_STATS_CLICKS', lang, count=stats['clicks'])}\n"
         f"  • CTR: {stats['ctr']}%"
     )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="❌ Выключить" if ad["enabled"] else "✅ Включить",
+            text=t("ADS_BTN_TOGGLE_OFF", lang) if ad["enabled"] else t("ADS_BTN_TOGGLE_ON", lang),
             callback_data=f"ads_toggle_{ad_id}"
         )],
-        [InlineKeyboardButton(text="✏️ Изменить текст", callback_data=f"ads_edit_text_{ad_id}")],
-        [InlineKeyboardButton(text="🔗 Изменить ссылку", callback_data=f"ads_edit_link_{ad_id}")],
-        [InlineKeyboardButton(text="🔘 Кнопка", callback_data=f"ads_edit_button_{ad_id}")],
-        [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"ads_delete_{ad_id}")],
-        [InlineKeyboardButton(text="🔙 Список", callback_data="ads_list")],
+        [InlineKeyboardButton(text=t("ADS_BTN_EDIT_TEXT", lang), callback_data=f"ads_edit_text_{ad_id}")],
+        [InlineKeyboardButton(text=t("ADS_BTN_EDIT_LINK", lang), callback_data=f"ads_edit_link_{ad_id}")],
+        [InlineKeyboardButton(text=t("ADS_BTN_EDIT_BUTTON", lang), callback_data=f"ads_edit_button_{ad_id}")],
+        [InlineKeyboardButton(text=t("ADS_BTN_DELETE", lang), callback_data=f"ads_delete_{ad_id}")],
+        [InlineKeyboardButton(text=t("ADS_BTN_BACK_LIST", lang), callback_data="ads_list")],
     ])
 
     try:
@@ -184,62 +200,66 @@ async def ads_view(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "ads_add")
 async def ads_add_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
     if callback.from_user.id not in ADMINS:
         return
     await state.set_state(AdStates.waiting_text)
     await callback.message.edit_text(
-        "➕ ДОБАВИТЬ БЛОК\n\nШаг 1/3\n\n"
-        "Введите ТЕКСТ рекламы:\n\n"
+        t("ADS_ADD_STEP1_TITLE", lang) + "\n\n"
+        f"{t('ADS_ENTER_TEXT', lang)}\n\n"
         "/cancel — отмена"
     )
 
 
 @router.message(AdStates.waiting_text)
 async def ads_add_text(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     text = message.text.strip()
     if len(text) < 5:
-        await message.answer("Слишком короткий текст (мин. 5 символов).")
+        await message.answer(t("ADS_ERR_TEXT_SHORT", lang))
         return
     await state.update_data(ad_text=text)
     await state.set_state(AdStates.waiting_link)
     await message.answer(
-        "Шаг 2/3\n\n"
-        "Введите ССЫЛКУ (URL) или /skip, если без ссылки:\n\n"
-        "Пример: https://partner.com/promo"
+        t("ADS_ADD_STEP2_TITLE", lang) + "\n\n"
+        f"{t('ADS_ENTER_LINK', lang)}\n\n"
+        f"{t('ADS_ENTER_LINK_HINT', lang)}"
     )
 
 
 @router.message(AdStates.waiting_link)
 async def ads_add_link(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     link = message.text.strip()
     if link == "/skip":
         link = None
     elif not (link.startswith("http://") or link.startswith("https://")):
-        await message.answer("❌ Ссылка должна начинаться с http:// или https://")
+        await message.answer(t("ADS_ERR_LINK_FORMAT", lang))
         return
     await state.update_data(ad_link=link)
     await state.set_state(AdStates.waiting_button_text)
     await message.answer(
-        "Шаг 3/3\n\n"
-        "Введите текст кнопки (по умолчанию «Подробнее»):"
+        t("ADS_ADD_STEP3_TITLE", lang) + "\n\n"
+        f"{t('ADS_ENTER_BUTTON', lang)}"
     )
 
 
 @router.message(AdStates.waiting_button_text)
 async def ads_add_button(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
-    btn_text = message.text.strip() or "Подробнее"
+    btn_text = message.text.strip() or t("ADS_BTN_DEFAULT", lang)
     data = await state.get_data()
     await state.clear()
 
@@ -248,7 +268,7 @@ async def ads_add_button(message: Message, state: FSMContext):
         link=data.get("ad_link"),
         button_text=btn_text,
     )
-    await message.answer(f"✅ Блок #{ad_id} добавлен!")
+    await message.answer(t("ADS_BLOCK_ADDED", lang, id=ad_id))
     # Отправляем в меню
     from aiogram.types import CallbackQuery as FakeCallback
     # Просто вызываем меню админа через message
@@ -256,24 +276,25 @@ async def ads_add_button(message: Message, state: FSMContext):
 
 
 async def show_ads_after_action(target):
+    lang = await _admin_lang(target.from_user.id) if hasattr(target, "from_user") else "ru"
     """Показ меню рекламы после действия."""
     config = await get_ads_config()
     ads = await get_all_ads()
     stats = await get_all_ad_stats(days=7)
 
-    status = "✅ ВКЛ" if config.get("enabled") else "❌ ВЫКЛ"
+    status = t("ADMIN_TRIAL_ON", lang) if config.get("enabled") else t("ADMIN_TRIAL_OFF", lang)
     freq_map = {
-        "always": "Всегда",
-        "daily": "1 раз в день",
-        "every_n": f"Каждый {config.get('frequency_value', 5)}-й раз",
+        "always": t("ADS_FREQ_ALWAYS", lang),
+        "daily": t("ADS_FREQ_DAILY", lang),
+        "every_n": t("ADS_FREQ_EVERY_N", lang, n=config.get('frequency_value', 5)),
     }
     freq_text = freq_map.get(config.get("frequency", "daily"), "?")
 
     text = (
-        f"📢 УПРАВЛЕНИЕ РЕКЛАМОЙ\n\n"
-        f"Статус: {status}\n"
-        f"Место: 🏠 Меню\n"
-        f"Частота: {freq_text}\n"
+        f"{t('ADS_MENU_TITLE', lang)}\n\n"
+        f"{t('ADS_CONFIG_ENABLED', lang, status=status)}\n"
+        f"{t('ADS_PLACE_MENU', lang)}\n"
+        f"{t('ADS_CONFIG_FREQ', lang, freq=freq_text)}\n"
         f"Лимит: {config.get('max_per_day', 3)} показов/день\n\n"
         f"📊 За 7 дней: показов {stats['shows']}, кликов {stats['clicks']}"
     )
@@ -281,11 +302,11 @@ async def show_ads_after_action(target):
     toggle_text = "❌ Выключить" if config.get("enabled") else "✅ Включить"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle_text, callback_data="ads_toggle_all")],
-        [InlineKeyboardButton(text="➕ Добавить блок", callback_data="ads_add")],
-        [InlineKeyboardButton(text="📋 Список блоков", callback_data="ads_list")],
+        [InlineKeyboardButton(text=t("ADS_BTN_ADD", lang), callback_data="ads_add")],
+        [InlineKeyboardButton(text=t("ADS_BTN_LIST", lang), callback_data="ads_list")],
         [InlineKeyboardButton(text="⚙️ Настройки", callback_data="ads_settings")],
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="ads_stats")],
-        [InlineKeyboardButton(text="📖 Инструкция", callback_data="ads_help")],
+        [InlineKeyboardButton(text=t("ADS_BTN_STATS", lang), callback_data="ads_stats")],
+        [InlineKeyboardButton(text=t("ADS_BTN_HELP", lang), callback_data="ads_help")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
     ])
 
@@ -310,9 +331,10 @@ async def ads_edit_text_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdStates.waiting_edit_text)
 async def ads_edit_text_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     data = await state.get_data()
     ad_id = data.get("ad_id")
@@ -335,15 +357,16 @@ async def ads_edit_link_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdStates.waiting_edit_link)
 async def ads_edit_link_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     link = message.text.strip()
     if link == "/skip":
         link = None
     elif link and not (link.startswith("http://") or link.startswith("https://")):
-        await message.answer("❌ Ссылка должна начинаться с http:// или https://")
+        await message.answer(t("ADS_ERR_LINK_FORMAT", lang))
         return
     data = await state.get_data()
     ad_id = data.get("ad_id")
@@ -366,9 +389,10 @@ async def ads_edit_button_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdStates.waiting_edit_button)
 async def ads_edit_button_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     data = await state.get_data()
     ad_id = data.get("ad_id")
@@ -502,9 +526,10 @@ async def ads_freq_set(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdStates.waiting_freq_value)
 async def ads_freq_value_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     try:
         n = int(message.text.strip())
@@ -530,9 +555,10 @@ async def ads_set_max(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdStates.waiting_max_per_day)
 async def ads_max_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     try:
         n = int(message.text.strip())
@@ -746,12 +772,13 @@ def _build_ad_url(ad: dict) -> str:
 # ============================================================
 @router.callback_query(F.data.startswith("ads_edit_mode_"))
 async def ads_edit_mode(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
     if callback.from_user.id not in ADMINS:
         return
     ad_id = int(callback.data.replace("ads_edit_mode_", ""))
     ad = await get_ad(ad_id)
     if not ad:
-        await callback.answer("Не найден", show_alert=True)
+        await callback.answer(t("ADS_NOT_FOUND", lang), show_alert=True)
         return
 
     current_mode = ad.get("link_mode", "direct")
