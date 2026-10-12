@@ -74,3 +74,10 @@ test_*.py
 dump_*.py
 dump_*.txt
 
+
+# Debug scripts
+fix_*.py
+check_*.py
+split_*.py
+dump_*.py
+
