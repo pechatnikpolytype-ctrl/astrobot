@@ -277,28 +277,30 @@ class N1NService:
             return ""
         return "ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n" + "\n".join(parts)
 
-    def _get_system_prompt(self, qtype: str) -> str:
+    def _get_system_prompt(self, qtype: str, lang: str = "ru") -> str:
+        lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
+
         base = (
-            "Ты — профессиональный астролог с 20-летним опытом.\n"
-            "Требования:\n"
-            "- НЕ используй markdown (**, __, `)\n"
-            "- Используй эмодзи для оформления\n"
-            "- Тон: тёплый, дружелюбный, поддерживающий\n"
-            "- Отвечай на русском\n"
-            "- НЕ упоминай конкретные числа месяца\n"
+            "You are a professional astrologer with 20 years of experience.\n"
+            "Requirements:\n"
+            "- Do NOT use markdown (**, __, `)\n"
+            "- Use emoji for formatting\n"
+            "- Tone: warm, friendly, supportive\n"
+            f"- IMPORTANT: Answer ONLY in {lang_name}\n"
+            "- Do NOT mention specific month dates\n"
         )
         if qtype == "personal":
             return base + (
-                "\nУчитывай ИНФОРМАЦИЮ О ПОЛЬЗОВАТЕЛЕ ниже.\n"
-                "Отвечай персонально, обращайся по имени, учитывай цели.\n"
-                "4-6 предложений, по делу."
+                "\nConsider USER INFO below.\n"
+                "Answer personally, address by name, consider goals.\n"
+                f"4-6 sentences, to the point, in {lang_name}."
             )
-        return base + "\nОтвечай информативно, 4-6 предложений."
+        return base + f"\nAnswer informatively, 4-6 sentences, in {lang_name}."
 
-    def _build_user_prompt(self, question: str, context: str) -> str:
+    def _build_user_prompt(self, question: str, context: str, lang: str = "ru") -> str:
         if context:
-            return f"{context}\n\nВопрос пользователя: {question}"
-        return f"Вопрос пользователя: {question}"
+            return f"{context}\n\nUser question: {question}"
+        return f"User question: {question}"
 
     # ============================================================
     # ЗАПРОС К AI

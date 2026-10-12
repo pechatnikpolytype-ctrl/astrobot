@@ -80,6 +80,18 @@ async def init_postgres_db():
             )
         """)
 
+        # Get existing columns first (1 fast query)
+        existing_cols = set()
+        try:
+            rows = await conn.fetch("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'users'
+            """)
+            existing_cols = {r["column_name"] for r in rows}
+        except Exception as e:
+            logger.warning(f"Failed to read users columns: {e}")
+
+        # Migrations: only ADD missing columns
         for col, col_type in [
             ("gender", "TEXT"),
             ("bio", "TEXT"),
@@ -89,10 +101,13 @@ async def init_postgres_db():
             ("ai_notes", "TEXT"),
             ("profile_completed", "BOOLEAN DEFAULT FALSE"),
         ]:
+            if col in existing_cols:
+                continue
             try:
-                await conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {col_type}")
+                await conn.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+                logger.info(f"Added column: {col}")
             except Exception as e:
-                logger.warning(f"Миграция {col}: {e}")
+                logger.warning(f"Migration {col}: {e}")
 
         # --- PAYMENTS ---
         await conn.execute("""

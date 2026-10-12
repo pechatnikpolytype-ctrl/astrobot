@@ -95,7 +95,7 @@ class ProfessionalPDFGenerator:
         # Заголовок
         c.setFont(FONT_BOLD_NAME, 24)
         c.setFillColor(TEXT_GOLD)
-        c.drawCentredString(width / 2, height - 55, "НАТАЛЬНАЯ КАРТА")
+        c.drawCentredString(width / 2, height - 55, t("PDF_NATAL_TITLE", lang))
 
         info = chart_data.get("birth_info", {})
         c.setFont(FONT_BOLD_NAME, 15)
@@ -106,7 +106,7 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(
             width / 2, height - 105,
-            f"{info.get('date', '')} в {info.get('time', '')} | {info.get('place', '')}"
+            f"{info.get('date', '')} {('am' if lang == 'de' else ('in' if lang == 'en' else 'в'))} {info.get('time', '')} | {info.get('place', '')}"
         )
 
         c.setStrokeColor(TEXT_GOLD)
@@ -118,23 +118,23 @@ class ProfessionalPDFGenerator:
         # Основные характеристики
         c.setFont(FONT_BOLD_NAME, 13)
         c.setFillColor(TEXT_GOLD)
-        c.drawString(50, y, "ОСНОВНЫЕ ХАРАКТЕРИСТИКИ")
+        c.drawString(50, y, t("NATAL_HEADER_MAIN", lang))
         y -= 22
         c.setFont(FONT_NAME, 11)
         c.setFillColor(TEXT_WHITE)
-        c.drawString(70, y, f"Солнце в знаке: {chart_data.get('sun_sign', 'Неизвестно')}")
+        c.drawString(70, y, f"{t('NATAL_LABEL_SUN', lang)}: {sign_display(chart_data.get('sun_sign', 'Unknown'), lang)}")
         y -= 18
-        c.drawString(70, y, f"Стихия: {chart_data.get('element', 'Неизвестно')}")
+        c.drawString(70, y, f"{t('NATAL_LABEL_ELEMENT', lang)}: {element_display(chart_data.get('element', 'Unknown'), lang)}")
         y -= 18
-        c.drawString(70, y, f"Качество: {chart_data.get('quality', 'Неизвестно')}")
+        c.drawString(70, y, f"{t('NATAL_LABEL_QUALITY', lang)}: {quality_display(chart_data.get('quality', 'Unknown'), lang)}")
         y -= 18
-        c.drawString(70, y, f"Асцендент: {chart_data.get('ascendant', 'Неизвестно')}")
+        c.drawString(70, y, f"{t('NATAL_LABEL_ASC', lang)}: {sign_display(chart_data.get('ascendant', 'Unknown'), lang)}")
         y -= 35
 
         # Планеты — две колонки
         c.setFont(FONT_BOLD_NAME, 13)
         c.setFillColor(TEXT_GOLD)
-        c.drawString(50, y, "ПОЛОЖЕНИЕ ПЛАНЕТ")
+        c.drawString(50, y, t("NATAL_HEADER_PLANETS", lang))
         y -= 22
         c.setFont(FONT_NAME, 10)
         c.setFillColor(TEXT_WHITE)
@@ -157,7 +157,7 @@ class ProfessionalPDFGenerator:
         # Дома — 4 колонки
         c.setFont(FONT_BOLD_NAME, 13)
         c.setFillColor(TEXT_GOLD)
-        c.drawString(50, y, "АСТРОЛОГИЧЕСКИЕ ДОМА")
+        c.drawString(50, y, t("NATAL_HEADER_HOUSES", lang))
         y -= 22
         c.setFont(FONT_NAME, 10)
         c.setFillColor(TEXT_WHITE)
@@ -177,7 +177,7 @@ class ProfessionalPDFGenerator:
         if interpretation:
             c.setFont(FONT_BOLD_NAME, 13)
             c.setFillColor(TEXT_GOLD)
-            c.drawString(50, y, "ИНТЕРПРЕТАЦИЯ")
+            c.drawString(50, y, t("NATAL_HEADER_AI", lang))
             y -= 22
             c.setFillColor(TEXT_WHITE)
             y = self._draw_text_wrapped(
@@ -212,7 +212,7 @@ class ProfessionalPDFGenerator:
 
         c.setFont(FONT_BOLD_NAME, 24)
         c.setFillColor(TEXT_GOLD)
-        c.drawCentredString(width / 2, height - 55, "ГОРОСКОП")
+        c.drawCentredString(width / 2, height - 55, t("PDF_HOROSCOPE_TITLE", lang))
 
         c.setFont(FONT_BOLD_NAME, 15)
         c.setFillColor(TEXT_WHITE)
