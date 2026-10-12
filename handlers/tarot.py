@@ -149,7 +149,7 @@ async def tarot_process_question(message: Message, state: FSMContext):
         positions = get_positions(question, lang=lang)
         for i, card_key in enumerate(cards):
             img_path = get_card_image(card_key)
-            caption = get_card_caption(card_key)
+            caption = get_card_caption(card_key, lang=lang)
             if i < len(positions):
                 caption = f"{positions[i]}: {caption}"
 

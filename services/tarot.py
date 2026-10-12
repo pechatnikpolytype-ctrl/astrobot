@@ -84,11 +84,13 @@ async def _generate_ai_reading(user_id: int, question: str, cards: list, lang: s
     lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
 
     # Cards info (localized names)
+    from locales.tarot_cards import card_name
     cards_info = []
     for i, key in enumerate(cards, 1):
         data = _get_card_data(key)
+        localized_name = card_name(key, lang)
         cards_info.append(
-            f"{i}. {data.get('ru', key)} \u2014 {data.get('upright', '')}"
+            f"{i}. {localized_name} \u2014 {data.get('upright', '')}"
         )
     cards_text = "\n".join(cards_info)
 
@@ -292,23 +294,25 @@ async def get_or_create_reading(user_id: int, question: str, count: int = 3, lan
 # ============================================================
 # ХЕЛПЕРЫ ДЛЯ HANDLER
 # ============================================================
-def get_card_caption(card_key: str) -> str:
-    """Краткое описание карты для подписи к фото."""
+def get_card_caption(card_key: str, lang: str = "ru") -> str:
+    """Short card caption for photo."""
+    from locales.tarot_cards import card_name
+    name = card_name(card_key, lang)
+    return f"\U0001F0CF {name}"
+
+
+def get_card_full_text(card_key: str, position: str = "", lang: str = "ru") -> str:
+    """Full card text for message."""
+    from locales.tarot_cards import card_name
     data = _get_card_data(card_key)
+    name = card_name(card_key, lang)
     if not data:
-        return card_key
-    return f"🃏 {data.get('ru', card_key)}"
+        return f"\U0001F0CF {name}"
 
-
-def get_card_full_text(card_key: str, position: str = "") -> str:
-    """Полный текст карты для сообщения."""
-    data = _get_card_data(card_key)
-    if not data:
-        return f"🃏 {card_key}"
-
-    text = f"🃏 {data.get('ru', card_key)}"
+    text = f"\U0001F0CF {name}"
     if position:
         text = f"{position}: {text}"
+    # upright — оставим на ru (перевод значений — вне этой фазы)
     text += f"\n{data.get('upright', '')}"
     return text
 
