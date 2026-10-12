@@ -4,6 +4,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from config import ADMINS, BOT_TOKEN
+from locales import t
 from database.postgres_db import (
     get_user, get_stats, set_subscription, is_paid, db,
     get_pricing, set_pricing,
@@ -36,47 +37,52 @@ class AdminStates(StatesGroup):
 
 
 async def show_admin_panel(target, edit: bool = True):
+    if hasattr(target, "from_user"):
+        lang = await _admin_lang(target.from_user.id)
+    else:
+        lang = "ru"
+
     stats = await get_stats()
     pricing = await get_pricing()
     trial = await get_trial()
     ai_limits = await get_ai_limits()
     ai_usage = await get_total_ai_usage_today()
 
-    trial_status = f"✅ ВКЛ ({trial['days']} дн.)" if trial.get("enabled") else "❌ ВЫКЛ"
+    trial_status = f"{t('ADMIN_TRIAL_ON', lang)} ({trial['days']} {t('ADMIN_TRIAL_DAYS', lang)})" if trial.get("enabled") else t("ADMIN_TRIAL_OFF", lang)
 
     text = (
-        "👑 АДМИН-ПАНЕЛЬ\n\n"
-        f"📊 Статистика:\n"
-        f"  • Всего: {stats['total_users']}\n"
-        f"  • Платных: {stats['paid_users']}\n"
-        f"  • Бесплатных: {stats['free_users']}\n\n"
-        f"⭐ Баланс: {stats['total_stars']} звёзд\n"
-        f"💳 Платежей: {stats['total_payments']}\n\n"
-        f"🎁 Триал: {trial_status}\n"
+        f"{t('ADMIN_PANEL_TITLE', lang)}\n"
+        + t("ADMIN_STATS_HEADER", lang) + "\n"
+        + f"  \u2022 {t('ADMIN_TOTAL_USERS', lang)}: {stats['total_users']}\n"
+        + f"  \u2022 {t('ADMIN_PAID_USERS', lang)}: {stats['paid_users']}\n"
+        + f"  \u2022 {t('ADMIN_FREE_USERS', lang)}: {stats['free_users']}\n\n"
+        + f"\u2b50 {t('ADMIN_BALANCE_LABEL', lang)}: {stats['total_stars']} {t('ADMIN_STARS_SUFFIX', lang)}\n"
+        + f"\U0001F4B3 {t('ADMIN_PAYMENTS_LABEL', lang)}: {stats['total_payments']}\n\n"
+        + f"\U0001F381 {t('ADMIN_TRIAL_LABEL', lang)}: {trial_status}\n"
         f"🤖 AI: free={ai_limits['free']}, premium={ai_limits['premium']}\n"
-        f"📊 AI сегодня: {ai_usage}\n\n"
-        f"💰 Тарифы:\n"
+        f"\U0001F4CA {t('ADMIN_AI_TODAY', lang)}: {ai_usage}\n\n"
+        f"{t('ADMIN_TARIFFS_HEADER', lang)}\n"
     )
     for plan, info in pricing.items():
-        text += f"  • {info['days']} дней — {info['stars']} ⭐\n"
+        text += "  " + t("ADMIN_TARIFF_LINE", lang, days=info['days'], stars=info['stars']) + "\n"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Цены", callback_data="admin_pricing"),
-         InlineKeyboardButton(text="⭐ Баланс", callback_data="admin_balance")],
-        [InlineKeyboardButton(text="🎁 Триал", callback_data="admin_trial"),
-         InlineKeyboardButton(text="🤖 AI-лимиты", callback_data="admin_ai")],
-	 [InlineKeyboardButton(text="🔔 Напоминания", callback_data="admin_reminders"),
-     InlineKeyboardButton(text="🧹 Автоочистка", callback_data="admin_cleanup")],
-        [InlineKeyboardButton(text="📜 История AI", callback_data="admin_ai_history"),
-         InlineKeyboardButton(text="🗑️ Кэш AI", callback_data="admin_cache")],
-        [InlineKeyboardButton(text="📊 Стата", callback_data="admin_stats"),
-         InlineKeyboardButton(text="👥 Юзеры", callback_data="admin_users")],
-        [InlineKeyboardButton(text="💎 Подписки", callback_data="admin_subs"),
-         InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
-                [InlineKeyboardButton(text="✨ Утренние факты", callback_data="admin_daily_facts")],
-        [InlineKeyboardButton(text="👑 Админы", callback_data="admin_manage_admins")],
-        [InlineKeyboardButton(text="📢 Реклама", callback_data="admin_ads")],
-        [InlineKeyboardButton(text="🔙 Меню", callback_data="main_menu")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_PRICING", lang), callback_data="admin_pricing"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_BALANCE", lang), callback_data="admin_balance")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_TRIAL", lang), callback_data="admin_trial"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_AI", lang), callback_data="admin_ai")],
+	 [InlineKeyboardButton(text=t("ADMIN_BTN_REMINDERS", lang), callback_data="admin_reminders"),
+     InlineKeyboardButton(text=t("ADMIN_BTN_CLEANUP", lang), callback_data="admin_cleanup")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_AI_HISTORY", lang), callback_data="admin_ai_history"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_CACHE", lang), callback_data="admin_cache")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_STATS", lang), callback_data="admin_stats"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_USERS", lang), callback_data="admin_users")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_SUBS", lang), callback_data="admin_subs"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_BROADCAST", lang), callback_data="admin_broadcast")],
+                [InlineKeyboardButton(text=t("ADMIN_BTN_DAILY_FACTS", lang), callback_data="admin_daily_facts")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_ADMINS", lang), callback_data="admin_manage_admins")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_ADS", lang), callback_data="admin_ads")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="main_menu")],
     ])
 
     if isinstance(target, Message):
@@ -88,10 +94,24 @@ async def show_admin_panel(target, edit: bool = True):
             await target.message.answer(text, reply_markup=keyboard)
 
 
+async def _admin_lang(user_id: int) -> str:
+    """Admin language (fallback ru)."""
+    try:
+        from config import MULTILANG_ENABLED
+        if not MULTILANG_ENABLED:
+            return "ru"
+        from database.postgres_db import get_user_lang_cached
+        return await get_user_lang_cached(user_id)
+    except Exception:
+        return "ru"
+
+
 @router.message(Command("admin"))
 async def admin_command(message: Message):
+    lang = await _admin_lang(message.from_user.id)
+
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ Нет доступа")
+        await message.answer(t("ADMIN_NO_ACCESS", lang))
         return
     await show_admin_panel(message)
 
@@ -113,29 +133,31 @@ async def admin_back(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_cache")
 async def admin_cache(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     stats = await get_ai_cache_stats()
 
     text = (
-        f"🗑️ УПРАВЛЕНИЕ КЭШЕМ AI\n\n"
-        f"📊 Статистика:\n"
-        f"  • Всего записей: {stats['total']}\n"
-        f"  • Постоянных: {stats['permanent']}\n"
-        f"  • Временных: {stats['time_dependent']}\n"
-        f"  • Личных: {stats['personal']}\n"
-        f"  • Общих: {stats['general']}\n\n"
-        f"Что делают кнопки:\n"
-        f"  • Очистить временные — удалит ответы на 'сегодня', 'завтра'\n"
-        f"  • Очистить старые — удалит записи старше 14 дней\n"
-        f"  • Очистить ВСЁ — полностью сбросит кэш"
+        f"{t('ADMIN_CACHE_TITLE', lang)}\n"
+        f"{t('ADMIN_STATS_HEADER', lang)}\n"
+        f"  \u2022 {t('ADMIN_CACHE_TOTAL', lang)}: {stats['total']}\n"
+        f"  \u2022 {t('ADMIN_CACHE_PERMANENT', lang)}: {stats['permanent']}\n"
+        f"  \u2022 {t('ADMIN_CACHE_TEMP', lang)}: {stats['time_dependent']}\n"
+        f"  \u2022 {t('ADMIN_CACHE_PERSONAL', lang)}: {stats['personal']}\n"
+        f"  \u2022 {t('ADMIN_CACHE_GENERAL', lang)}: {stats['general']}\n\n"
+        f"{t('ADMIN_CACHE_HINT', lang)}\n"
+        f"  \u2022 {t('ADMIN_CACHE_HINT_TEMP', lang)}\n"
+        f"  \u2022 {t('ADMIN_CACHE_HINT_OLD', lang)}\n"
+        f"  \u2022 {t('ADMIN_CACHE_HINT_ALL', lang)}"
     )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧹 Очистить временные", callback_data="cache_clear_temp")],
-        [InlineKeyboardButton(text="🗑️ Очистить старые (>14д)", callback_data="cache_clear_old")],
-        [InlineKeyboardButton(text="⚠️ Очистить ВСЁ", callback_data="cache_clear_all")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CACHE_TEMP", lang), callback_data="cache_clear_temp")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CACHE_OLD", lang), callback_data="cache_clear_old")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CACHE_ALL", lang), callback_data="cache_clear_all")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -145,44 +167,52 @@ async def admin_cache(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cache_clear_temp")
 async def cache_clear_temp(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     await clean_time_dependent_cache()
-    await callback.answer("✅ Временные удалены", show_alert=True)
+    await callback.answer(t("ADMIN_CACHE_CLEARED_TEMP", lang), show_alert=True)
     await admin_cache(callback)
 
 
 @router.callback_query(F.data == "cache_clear_old")
 async def cache_clear_old(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     await clean_old_ai_history_v2(14)
-    await callback.answer("✅ Старые (>14д) удалены", show_alert=True)
+    await callback.answer(t("ADMIN_CACHE_CLEARED_OLD", lang), show_alert=True)
     await admin_cache(callback)
 
 
 @router.callback_query(F.data == "cache_clear_all")
 async def cache_clear_all_confirm(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ ДА, ОЧИСТИТЬ ВСЁ", callback_data="cache_clear_all_do")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_cache")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_YES_DO", lang), callback_data="cache_clear_all_do")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CANCEL", lang), callback_data="admin_cache")],
     ])
     await callback.message.edit_text(
-        "⚠️ ОЧИСТИТЬ ВЕСЬ КЭШ?\n\nЭто удалит ВСЕ сохранённые ответы AI.\nНельзя отменить.",
+        t("ADMIN_CACHE_CLEAR_CONFIRM", lang),
         reply_markup=keyboard
     )
 
 
 @router.callback_query(F.data == "cache_clear_all_do")
 async def cache_clear_all_do(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM ai_history")
-    await callback.answer("✅ Кэш полностью очищен", show_alert=True)
+    await callback.answer(t("ADMIN_CACHE_CLEARED_ALL", lang), show_alert=True)
     await admin_cache(callback)
 
 
@@ -191,14 +221,16 @@ async def cache_clear_all_do(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_ai_history")
 async def admin_ai_history(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     total = await count_ai_history()
     history = await get_ai_history(10)
 
-    text = f"📜 ИСТОРИЯ AI\n\nВсего: {total}\n\nПоследние 10:\n\n"
+    text = t("ADMIN_AI_HISTORY_TITLE", lang) + f"\n\n{t('ADMIN_AI_HISTORY_TOTAL', lang)}: {total}\n\n{t('ADMIN_AI_HISTORY_LAST10', lang)}\n\n"
     if not history:
-        text += "(пусто)"
+        text += t("ADMIN_AI_HISTORY_EMPTY", lang)
     else:
         for i, h in enumerate(history, 1):
             q = (h.get("question") or "")[:40]
@@ -206,7 +238,7 @@ async def admin_ai_history(callback: CallbackQuery):
             text += f"{i}. [{h['request_type']}] {q} ({date})\n"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑️ Управление кэшем", callback_data="admin_cache")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CACHE_MGMT", lang), callback_data="admin_cache")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ai")],
     ])
     try:
@@ -220,6 +252,8 @@ async def admin_ai_history(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_ai")
 async def admin_ai(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     limits = await get_ai_limits()
@@ -227,23 +261,23 @@ async def admin_ai(callback: CallbackQuery):
     top = await get_top_ai_users(5)
 
     text = (
-        f"🤖 AI-ЛИМИТЫ\n\n"
-        f"📊 Настройки:\n"
-        f"  • Бесплатные: {limits['free']} /день\n"
-        f"  • Премиум: {limits['premium']} /день\n\n"
-        f"📈 Сегодня: {usage} запросов\n\n"
+        f"{t('ADMIN_AI_LIMITS_TITLE', lang)}\n"
+        f"{t('ADMIN_AI_LIMITS_HEADER', lang)}\n"
+        f"  {t('ADMIN_AI_LIMITS_FREE', lang, limit=limits['free'])}\n"
+        f"  {t('ADMIN_AI_LIMITS_PREMIUM', lang, limit=limits['premium'])}\n\n"
+        f"{t('ADMIN_AI_LIMITS_TODAY', lang, usage=usage)}\n\n"
     )
     if top:
-        text += "🏆 Топ:\n"
+        text += t("ADMIN_AI_LIMITS_TOP", lang) + "\n"
         for u in top:
             text += f"  • {u['user_id']}: {u['count']}\n"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✏️ Free ({limits['free']})", callback_data="ai_set_free")],
         [InlineKeyboardButton(text=f"✏️ Premium ({limits['premium']})", callback_data="ai_set_premium")],
-        [InlineKeyboardButton(text="🔄 Сбросить счётчики", callback_data="ai_reset_all")],
-        [InlineKeyboardButton(text="📜 История", callback_data="admin_ai_history")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_AI_RESET", lang), callback_data="ai_reset_all")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_AI_HISTORY", lang), callback_data="admin_ai_history")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -264,6 +298,8 @@ async def ai_set_free_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_ai_limit_free)
 async def ai_set_free_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
+
     if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
@@ -275,7 +311,7 @@ async def ai_set_free_save(message: Message, state: FSMContext):
         if val < -1:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Число >= -1")
+        await message.answer(t("ADMIN_ERR_NUMBER_MINUS1", lang))
         return
     limits = await get_ai_limits()
     await set_ai_limits(val, limits["premium"])
@@ -297,6 +333,8 @@ async def ai_set_premium_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_ai_limit_premium)
 async def ai_set_premium_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
+
     if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
@@ -308,7 +346,7 @@ async def ai_set_premium_save(message: Message, state: FSMContext):
         if val < -1:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Число >= -1")
+        await message.answer(t("ADMIN_ERR_NUMBER_MINUS1", lang))
         return
     limits = await get_ai_limits()
     await set_ai_limits(limits["free"], val)
@@ -319,6 +357,8 @@ async def ai_set_premium_save(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "ai_reset_all")
 async def ai_reset_all_confirm(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -326,17 +366,19 @@ async def ai_reset_all_confirm(callback: CallbackQuery):
         [InlineKeyboardButton(text="❌ Нет", callback_data="admin_ai")],
     ])
     await callback.message.edit_text(
-        "🔄 Сбросить счётчики ВСЕМ?",
+        t("ADMIN_AI_RESET_CONFIRM", lang),
         reply_markup=keyboard
     )
 
 
 @router.callback_query(F.data == "ai_reset_do")
 async def ai_reset_do(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     await reset_all_ai_usage()
-    await callback.answer("✅ Сброшено", show_alert=True)
+    await callback.answer(t("ADMIN_AI_RESET_DONE", lang), show_alert=True)
     await admin_ai(callback)
 
 
@@ -345,18 +387,20 @@ async def ai_reset_do(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_trial")
 async def admin_trial(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     trial = await get_trial()
     used_count = await count_trial_used()
     status = "✅ ВКЛ" if trial.get("enabled") else "❌ ВЫКЛ"
-    text = f"🎁 ТРИАЛ\n\nСтатус: {status}\nСрок: {trial.get('days', 1)} дн.\nИспользовали: {used_count} чел."
+    text = t("ADMIN_TRIAL_TITLE", lang) + "\n\n" + t("ADMIN_TRIAL_STATUS", lang, status=status) + "\n" + t("ADMIN_TRIAL_DURATION", lang, days=trial.get('days', 1)) + "\n" + t("ADMIN_TRIAL_USED", lang, count=used_count)
     toggle = "❌ Выключить" if trial.get("enabled") else "✅ Включить"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle, callback_data="trial_toggle")],
-        [InlineKeyboardButton(text="✏️ Срок", callback_data="trial_change_days")],
-        [InlineKeyboardButton(text="🔄 Сбросить флаг", callback_data="trial_reset")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_TRIAL_DURATION", lang), callback_data="trial_change_days")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_TRIAL_RESET", lang), callback_data="trial_reset")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -366,12 +410,14 @@ async def admin_trial(callback: CallbackQuery):
 
 @router.callback_query(F.data == "trial_toggle")
 async def trial_toggle(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     trial = await get_trial()
     new_enabled = not trial.get("enabled", True)
     await set_trial(new_enabled, trial.get("days", 1))
-    await callback.answer("Переключено", show_alert=True)
+    await callback.answer(t("ADMIN_TRIAL_TOGGLED", lang), show_alert=True)
     await admin_trial(callback)
 
 
@@ -388,6 +434,8 @@ async def trial_change_days_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_trial_days)
 async def trial_set_days(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
+
     if not await is_admin(message.from_user.id):
         return
     if message.text == "/cancel":
@@ -399,17 +447,19 @@ async def trial_set_days(message: Message, state: FSMContext):
         if days < 1 or days > 365:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Число 1-365")
+        await message.answer(t("ADMIN_ERR_NUMBER_1_365", lang))
         return
     trial = await get_trial()
     await set_trial(trial.get("enabled", True), days)
     await state.clear()
-    await message.answer(f"✅ Срок: {days} дн.")
+    await message.answer(t("ADMIN_TRIAL_DURATION_SAVED", lang, days=days))
     await show_admin_panel(message)
 
 
 @router.callback_query(F.data == "trial_reset")
 async def trial_reset_confirm(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     used = await count_trial_used()
@@ -417,15 +467,17 @@ async def trial_reset_confirm(callback: CallbackQuery):
         [InlineKeyboardButton(text="✅ Да", callback_data="trial_reset_do")],
         [InlineKeyboardButton(text="❌ Нет", callback_data="admin_trial")],
     ])
-    await callback.message.edit_text(f"⚠️ Сбросить флаг у {used} пользователей?", reply_markup=keyboard)
+    await callback.message.edit_text(t("ADMIN_TRIAL_RESET_CONFIRM", lang, used=used), reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "trial_reset_do")
 async def trial_reset_do(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     await reset_all_trials()
-    await callback.answer("✅ Сброшено", show_alert=True)
+    await callback.answer(t("ADMIN_AI_RESET_DONE", lang), show_alert=True)
     await admin_trial(callback)
 
 
@@ -437,13 +489,13 @@ async def admin_pricing(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
         return
     pricing = await get_pricing()
-    text = "💰 ЦЕНЫ\n\n"
+    text = f"{t('ADMIN_PRICING_TITLE', lang)}\n\n"
     for plan, info in pricing.items():
-        text += f"  • {info['days']} дней — {info['stars']} ⭐\n"
+        text += "  " + t("ADMIN_PRICING_LINE", lang, days=info['days'], stars=info['stars']) + "\n"
     buttons = []
     for plan, info in pricing.items():
         buttons.append([InlineKeyboardButton(
-            text=f"✏️ {info['days']}д ({info['stars']}⭐)",
+            text=t("ADMIN_PRICING_EDIT_BTN", lang, days=info['days'], stars=info['stars']),
             callback_data=f"price_edit_{plan}"
         )])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")])
@@ -458,7 +510,7 @@ async def price_edit_start(callback: CallbackQuery, state: FSMContext):
     plan = callback.data.replace("price_edit_", "")
     await state.update_data(plan=plan)
     await state.set_state(AdminStates.waiting_price_days)
-    await callback.message.edit_text("Введите новый СРОК в днях:\n\n/cancel — отмена")
+    await callback.message.edit_text(t("ADMIN_PRICING_ENTER_DAYS", lang))
 
 
 @router.message(AdminStates.waiting_price_days)
@@ -478,7 +530,7 @@ async def price_edit_days(message: Message, state: FSMContext):
         return
     await state.update_data(days=days)
     await state.set_state(AdminStates.waiting_price_stars)
-    await message.answer(f"✅ {days} дней\n\nВведите ЦЕНУ в звёздах:")
+    await message.answer(t("ADMIN_PRICING_DAYS_SAVED", lang, days=days))
 
 
 @router.message(AdminStates.waiting_price_stars)
@@ -501,7 +553,7 @@ async def price_edit_stars(message: Message, state: FSMContext):
     pricing[data["plan"]] = {"days": data["days"], "stars": stars}
     await set_pricing(pricing)
     await state.clear()
-    await message.answer(f"✅ {data['days']} дней — {stars} ⭐")
+    await message.answer(t("ADMIN_PRICING_BOTH_SAVED", lang, days=data['days'], stars=stars))
     await show_admin_panel(message)
 
 
@@ -514,14 +566,14 @@ async def admin_balance(callback: CallbackQuery):
         return
     stats = await get_stats()
     text = (
-        f"⭐ БАЛАНС\n\n"
-        f"💎 Всего: {stats['total_stars']} ⭐\n"
-        f"💳 Платежей: {stats['total_payments']}\n"
-        f"👥 Платных: {stats['paid_users']}"
+        f"{t('ADMIN_BALANCE_TITLE', lang)}\n\n"
+        f"{t('ADMIN_BALANCE_TOTAL', lang, stars=stats['total_stars'])}\n"
+        f"{t('ADMIN_BALANCE_PAYMENTS', lang, count=stats['total_payments'])}\n"
+        f"{t('ADMIN_BALANCE_PAID', lang, count=stats['paid_users'])}"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💸 Как вывести", callback_data="admin_withdraw")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_WITHDRAW", lang), callback_data="admin_withdraw")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -531,16 +583,18 @@ async def admin_balance(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_withdraw")
 async def admin_withdraw(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     text = (
-        "💸 ВЫВОД\n\n"
-        "@BotFather → /mybots → бот → Payments → Stars → Withdraw\n\n"
-        "Минимум: 1000 ⭐"
+        f"{t('ADMIN_WITHDRAW_TITLE', lang)}\n\n"
+        f"{t('ADMIN_WITHDRAW_INSTRUCTIONS', lang)}\n\n"
+        f"{t('ADMIN_WITHDRAW_MINIMUM', lang)}"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⭐ Баланс", callback_data="admin_balance")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BALANCE", lang), callback_data="admin_balance")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -565,24 +619,24 @@ async def admin_stats(callback: CallbackQuery):
         today_req = await conn.fetchval("SELECT COUNT(*) FROM requests WHERE created_at >= CURRENT_DATE")
         new_week = await conn.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'")
     text = (
-        f"📊 СТАТИСТИКА\n\n"
-        f"👥 Всего: {stats['total_users']}\n"
-        f"🆕 За 7 дней: {new_week or 0}\n\n"
-        f"📋 ПО ТАРИФАМ:\n"
-        f"  • 🆓 Бесплатных: {tariffs['free']}\n"
-        f"  • 🎁 На триале: {tariffs['trial']}\n"
-        f"  • 📅 7 дней: {tariffs['7d']}\n"
-        f"  • 📅 30 дней: {tariffs['30d']}\n"
-        f"  • 📅 90 дней: {tariffs['90d']}\n"
-        f"  • 👑 Админов: {tariffs['admins']}\n\n"
-        f"📈 Запросов: {total_req or 0}\n"
-        f"📅 Сегодня: {today_req or 0}\n"
-        f"🤖 AI сегодня: {ai_usage}\n\n"
-        f"💰 Заработано: {stats['total_stars']} ⭐"
+        f"{t('ADMIN_STATS_TITLE', lang)}\n\n"
+        f"{t('ADMIN_STATS_TOTAL', lang, count=stats['total_users'])}\n"
+        f"{t('ADMIN_STATS_WEEK', lang, count=new_week or 0)}\n"
+        f"{t('ADMIN_STATS_BY_TARIFF', lang)}\n"
+        f"{t('ADMIN_STATS_FREE', lang, count=tariffs['free'])}\n"
+        f"{t('ADMIN_STATS_TRIAL', lang, count=tariffs['trial'])}\n"
+        f"{t('ADMIN_STATS_7D', lang, count=tariffs['7d'])}\n"
+        f"{t('ADMIN_STATS_30D', lang, count=tariffs['30d'])}\n"
+        f"{t('ADMIN_STATS_90D', lang, count=tariffs['90d'])}\n"
+        f"{t('ADMIN_STATS_ADMINS', lang, count=tariffs['admins'])}\n"
+        f"{t('ADMIN_STATS_REQUESTS', lang, count=total_req or 0)}\n"
+        f"{t('ADMIN_STATS_TODAY', lang, count=today_req or 0)}\n"
+        f"{t('ADMIN_STATS_AI', lang, count=ai_usage)}\n"
+        f"{t('ADMIN_STATS_EARNED', lang, stars=stats['total_stars'])}"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_REFRESH", lang), callback_data="admin_stats")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -604,17 +658,17 @@ async def admin_users(callback: CallbackQuery):
             FROM users ORDER BY created_at DESC LIMIT 10
         """)
     if not users:
-        await callback.message.edit_text("Нет пользователей")
+        await callback.message.edit_text(t("ADMIN_USERS_NO_USERS", lang))
         return
-    text = "👥 Последние 10:\n\n"
+    text = t("ADMIN_USERS_LAST10", lang) + "\n\n"
     for i, u in enumerate(users, 1):
         st = "💎" if u["is_paid"] else "🆓"
         name = u["first_name"] or u["username"] or str(u["user_id"])
         c = str(u["created_at"])[:10] if u["created_at"] else "?"
         text += f"{i}. {st} {u['user_id']} — {name} ({c})\n"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔍 Поиск", callback_data="admin_search_user")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_SEARCH", lang), callback_data="admin_search_user")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     await callback.message.edit_text(text, reply_markup=keyboard)
 
@@ -623,7 +677,7 @@ async def admin_users(callback: CallbackQuery):
 async def admin_search_user(callback: CallbackQuery, state: FSMContext):
     if not await is_admin(callback.from_user.id):
         return
-    await callback.message.edit_text("🔍 Введите ID:")
+    await callback.message.edit_text(t("ADMIN_USERS_ENTER_ID", lang))
     await state.set_state(AdminStates.waiting_search)
 
 
@@ -634,24 +688,24 @@ async def process_user_search(message: Message, state: FSMContext):
     try:
         user_id = int(message.text.strip())
     except ValueError:
-        await message.answer("❌ Неверный ID")
+        await message.answer(t("ADMIN_USERS_INVALID_ID", lang))
         return
     u = await get_user(user_id)
     if not u:
-        await message.answer("❌ Не найден")
+        await message.answer(t("ADMIN_USERS_NOT_FOUND", lang))
         await state.clear()
         return
     text = (
         f"👤 {u['user_id']}\n"
         f"📝 {u.get('first_name', '?')}\n"
-        f"👤 @{u.get('username', 'Нет')}\n"
-        f"⭐ {'💎 Премиум' if u.get('is_paid') else '🆓 Бесплатный'}\n"
-        f"📅 до {u.get('subscription_end', 'Не активна')}"
+        f"{t('ADMIN_USER_USERNAME', lang, username=u.get('username', t('ADMIN_USER_NO_USERNAME', lang)))}\n"
+        f"{(t('ADMIN_USER_PREMIUM', lang) if u.get('is_paid') else t('ADMIN_USER_FREE', lang))}\n"
+        f"{t('ADMIN_USER_UNTIL', lang, date=u.get('subscription_end', t('ADMIN_USER_NOT_ACTIVE', lang)))}"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Подписка", callback_data=f"add_sub_{user_id}")],
-        [InlineKeyboardButton(text="🔄 Сбросить триал", callback_data=f"reset_trial_{user_id}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_ADD_SUB", lang), callback_data=f"add_sub_{user_id}")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_RESET_TRIAL", lang), callback_data=f"reset_trial_{user_id}")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     await message.answer(text, reply_markup=keyboard)
     await state.clear()
@@ -665,7 +719,7 @@ async def reset_user_trial(callback: CallbackQuery):
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         await conn.execute("UPDATE users SET trial_used = FALSE WHERE user_id = $1", user_id)
-    await callback.answer(f"✅ Триал сброшен для {user_id}", show_alert=True)
+    await callback.answer(t("ADMIN_TRIAL_RESET_DONE", lang, user_id=user_id), show_alert=True)
 
 
 # ============================================================
@@ -685,16 +739,16 @@ async def admin_subs(callback: CallbackQuery):
             WHERE is_paid = TRUE AND subscription_end BETWEEN $1 AND $2
             ORDER BY subscription_end LIMIT 5
         """, today, next_week)
-    text = f"💎 ПОДПИСКИ\n\nАктивных: {paid}\n\n"
+    text = t("ADMIN_SUBS_TITLE", lang) + "\n\n" + t("ADMIN_SUBS_ACTIVE", lang, count=paid) + "\n\n"
     if expiring:
-        text += "⚠️ Истекают:\n"
+        text += t("ADMIN_SUBS_EXPIRING", lang) + "\n"
         for u in expiring:
-            text += f"  • {u['user_id']} — до {u['subscription_end']}\n"
+            text += "  " + t("ADMIN_SUBS_EXPIRING_LINE", lang, user_id=u['user_id'], date=u['subscription_end']) + "\n"
     else:
-        text += "✅ Нет истекающих"
+        text += t("ADMIN_SUBS_NO_EXPIRING", lang)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Выдать", callback_data="admin_give_sub")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_GIVE_SUB", lang), callback_data="admin_give_sub")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     await callback.message.edit_text(text, reply_markup=keyboard)
 
@@ -703,7 +757,7 @@ async def admin_subs(callback: CallbackQuery):
 async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
     if not await is_admin(callback.from_user.id):
         return
-    await callback.message.edit_text("➕ Введите ID:")
+    await callback.message.edit_text(t("ADMIN_SUBS_ENTER_ID", lang))
     await state.set_state(AdminStates.waiting_user_id)
 
 
@@ -714,23 +768,23 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
     try:
         user_id = int(message.text.strip())
     except ValueError:
-        await message.answer("❌ Неверный ID")
+        await message.answer(t("ADMIN_USERS_INVALID_ID", lang))
         return
     u = await get_user(user_id)
     if not u:
-        await message.answer("❌ Не найден")
+        await message.answer(t("ADMIN_USERS_NOT_FOUND", lang))
         await state.clear()
         return
     await state.update_data(user_id=user_id)
     await state.set_state(AdminStates.waiting_subscription_days)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
-        [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
-        [InlineKeyboardButton(text="90 дней", callback_data="sub_90")],
-        [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
-        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_7", lang), callback_data="sub_7")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_30", lang), callback_data="sub_30")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_90", lang), callback_data="sub_90")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_365", lang), callback_data="sub_365")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CANCEL_BACK", lang), callback_data="admin_back")],
     ])
-    await message.answer(f"👤 {u.get('first_name', user_id)}\n\nВыберите срок:", reply_markup=keyboard)
+    await message.answer(f"\U0001F464 {u.get('first_name', user_id)}\n\n{t('ADMIN_SUBS_CHOOSE_DAYS', lang)}", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("sub_"))
@@ -744,10 +798,10 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
     if user_id:
         await set_subscription(user_id, days)
         end_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
-        await callback.message.edit_text(f"✅ {user_id} — {days} дней (до {end_date})")
+        await callback.message.edit_text(t("ADMIN_SUBS_GIVEN", lang, user_id=user_id, days=days, date=end_date))
         try:
             from loader import bot
-            await bot.send_message(user_id, f"🎉 Подписка на {days} дней! До {end_date}")
+            await bot.send_message(user_id, t("ADMIN_SUBS_NOTIFY", lang, days=days, date=end_date))
         except Exception:
             pass
     await state.clear()
@@ -762,13 +816,13 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
     await state.update_data(user_id=user_id)
     await state.set_state(AdminStates.waiting_subscription_days)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
-        [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
-        [InlineKeyboardButton(text="90 дней", callback_data="sub_90")],
-        [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
-        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_7", lang), callback_data="sub_7")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_30", lang), callback_data="sub_30")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_90", lang), callback_data="sub_90")],
+        [InlineKeyboardButton(text=t("ADMIN_SUBS_DAYS_365", lang), callback_data="sub_365")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CANCEL_BACK", lang), callback_data="admin_back")],
     ])
-    await callback.message.edit_text(f"👤 {user_id}\n\nВыберите срок:", reply_markup=keyboard)
+    await callback.message.edit_text(f"\U0001F464 {user_id}\n\n{t('ADMIN_SUBS_CHOOSE_DAYS', lang)}", reply_markup=keyboard)
 
 
 # ============================================================
@@ -778,7 +832,7 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if not await is_admin(callback.from_user.id):
         return
-    await callback.message.edit_text("📢 Введите текст рассылки:\n\n/cancel — отмена")
+    await callback.message.edit_text(t("ADMIN_BROADCAST_ENTER", lang))
     await state.set_state(AdminStates.waiting_broadcast)
 
 
@@ -791,7 +845,7 @@ async def process_broadcast(message: Message, state: FSMContext):
         await show_admin_panel(message)
         return
     await state.clear()
-    msg = await message.answer("📢 Рассылка...")
+    msg = await message.answer(t("ADMIN_BROADCAST_SENDING", lang))
     pool = await db.create_pool()
     async with pool.acquire() as conn:
         users = await conn.fetch("SELECT user_id FROM users")
@@ -805,7 +859,7 @@ async def process_broadcast(message: Message, state: FSMContext):
             await asyncio.sleep(0.05)
         except Exception:
             fail += 1
-    await msg.edit_text(f"✅ Отправлено: {success}\n❌ Не доставлено: {fail}")
+    await msg.edit_text(t("ADMIN_BROADCAST_DONE", lang, success=success, fail=fail))
     await show_admin_panel(message)
 
 
@@ -822,20 +876,20 @@ async def admin_reminders(callback: CallbackQuery):
     status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
 
     text = (
-        f"🔔 НАПОМИНАНИЯ О ПРОФИЛЕ\n\n"
-        f"Статус: {status}\n\n"
-        f"Что делают напоминания:\n"
-        f"  • Пользователям с пустым профилем\n"
-        f"  • Не чаще раза в 7 дней\n"
-        f"  • В 18:00 UTC\n"
-        f"  • С кнопкой 'Заполнить профиль'\n\n"
-        f"Неактивные (> 30 дней) — не получают.\n"
+        f"{t('ADMIN_REMINDERS_TITLE', lang)}\n\n"
+        f"{t('ADMIN_REMINDERS_STATUS', lang, status=status)}\n"
+        f"{t('ADMIN_REMINDERS_WHAT', lang)}\n"
+        f"{t('ADMIN_REMINDERS_WHO', lang)}\n"
+        f"{t('ADMIN_REMINDERS_FREQ', lang)}\n"
+        f"{t('ADMIN_REMINDERS_TIME', lang)}\n"
+        f"{t('ADMIN_REMINDERS_BUTTON', lang)}\n"
+        f"{t('ADMIN_REMINDERS_INACTIVE', lang)}\n"
     )
-    toggle = "❌ Выключить" if enabled else "✅ Включить"
+    toggle = t("ADMIN_BTN_TOGGLE_OFF", lang) if enabled else t("ADMIN_BTN_TOGGLE_ON", lang)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle, callback_data="reminders_toggle")],
-        [InlineKeyboardButton(text="🧪 Тест (себе)", callback_data="reminders_test")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_TEST_SELF", lang), callback_data="reminders_test")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -851,7 +905,7 @@ async def reminders_toggle(callback: CallbackQuery):
     settings = await get_reminder_settings()
     new_enabled = not settings.get("enabled", True)
     await set_reminder_settings(new_enabled)
-    await callback.answer("✅ Изменено", show_alert=True)
+    await callback.answer(t("ADMIN_TOGGLED", lang), show_alert=True)
     await admin_reminders(callback)
 
 
@@ -864,12 +918,12 @@ async def reminders_test(callback: CallbackQuery):
         from loader import bot
         ok = await send_test_reminder(bot, callback.from_user.id)
         if ok:
-            await callback.answer("✅ Отправлено", show_alert=True)
+            await callback.answer(t("ADMIN_SENT", lang), show_alert=True)
         else:
-            await callback.answer("❌ Ошибка", show_alert=True)
+            await callback.answer(t("ADMIN_ERR", lang), show_alert=True)
     except Exception as e:
         logger.error(f"Тест напоминаний: {e}")
-        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+        await callback.answer(t("ADMIN_ERR_DETAIL", lang, err=e), show_alert=True)
 
 
 # ============================================================
@@ -877,6 +931,8 @@ async def reminders_test(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_cleanup")
 async def admin_cleanup(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_cache_cleanup_settings, get_ai_cache_stats
@@ -886,22 +942,22 @@ async def admin_cleanup(callback: CallbackQuery):
     status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
 
     text = (
-        f"🧹 АВТООЧИСТКА КЭША\n\n"
-        f"Статус: {status}\n\n"
-        f"Расписание: 03:00 UTC ежедневно\n"
-        f"Удаляет:\n"
-        f"  • Временные > 7 дней\n"
-        f"  • Постоянные > 90 дней\n\n"
-        f"📊 Текущее состояние:\n"
-        f"  • Всего записей: {stats['total']}\n"
-        f"  • Временных: {stats['time_dependent']}\n"
-        f"  • Постоянных: {stats['permanent']}\n"
+        f"{t('ADMIN_CLEANUP_TITLE', lang)}\n\n"
+        f"{t('ADMIN_REMINDERS_STATUS', lang, status=status)}\n"
+        f"{t('ADMIN_CLEANUP_SCHEDULE', lang)}\n"
+        f"{t('ADMIN_CLEANUP_DELETES', lang)}\n"
+        f"{t('ADMIN_CLEANUP_DEL_TEMP', lang)}\n"
+        f"{t('ADMIN_CLEANUP_DEL_PERM', lang)}\n\n"
+        f"{t('ADMIN_CLEANUP_STATE', lang)}\n"
+        f"  \u2022 {t('ADMIN_CACHE_TOTAL', lang)}: {stats['total']}\n"
+        f"  \u2022 {t('ADMIN_CACHE_TEMP', lang)}: {stats['time_dependent']}\n"
+        f"  \u2022 {t('ADMIN_CACHE_PERMANENT', lang)}: {stats['permanent']}\n"
     )
-    toggle = "❌ Выключить" if enabled else "✅ Включить"
+    toggle = t("ADMIN_BTN_TOGGLE_OFF", lang) if enabled else t("ADMIN_BTN_TOGGLE_ON", lang)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle, callback_data="cleanup_toggle")],
-        [InlineKeyboardButton(text="🧪 Запустить сейчас", callback_data="cleanup_now")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_RUN_NOW", lang), callback_data="cleanup_now")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -917,21 +973,23 @@ async def cleanup_toggle(callback: CallbackQuery):
     settings = await get_cache_cleanup_settings()
     new_enabled = not settings.get("enabled", True)
     await set_cache_cleanup_settings(new_enabled)
-    await callback.answer("✅ Изменено", show_alert=True)
+    await callback.answer(t("ADMIN_TOGGLED", lang), show_alert=True)
     await admin_cleanup(callback)
 
 
 @router.callback_query(F.data == "cleanup_now")
 async def cleanup_now(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     try:
         from database.postgres_db import auto_clean_cache
         await auto_clean_cache()
-        await callback.answer("✅ Очистка выполнена", show_alert=True)
+        await callback.answer(t("ADMIN_CLEANUP_DONE", lang), show_alert=True)
     except Exception as e:
         logger.error(f"Очистка: {e}")
-        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+        await callback.answer(t("ADMIN_ERR_DETAIL", lang, err=e), show_alert=True)
     await admin_cleanup(callback)
 
 
@@ -940,6 +998,8 @@ async def cleanup_now(callback: CallbackQuery):
 # ============================================================
 @router.callback_query(F.data == "admin_daily_facts")
 async def admin_daily_facts(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import (
@@ -955,24 +1015,24 @@ async def admin_daily_facts(callback: CallbackQuery):
     status = "✅ ВКЛ" if enabled else "❌ ВЫКЛ"
 
     text = (
-        f"✨ УТРЕНИЕ ФАКТЫ\n\n"
-        f"Статус: {status}\n"
-        f"Время: {settings.get('hour_utc', 9):02d}:{settings.get('minute_utc', 0):02d} UTC\n"
-        f"👥 Всего пользователей: {total}\n\n"
+        f"{t('ADMIN_DAILY_FACTS_TITLE', lang)}\n\n"
+        f"{t('ADMIN_DAILY_FACTS_STATUS', lang, status=status)}\n"
+        f"{t('ADMIN_DAILY_FACTS_TIME', lang, h=settings.get('hour_utc', 9), m=settings.get('minute_utc', 0))}\n"
+        f"{t('ADMIN_DAILY_FACTS_TOTAL_USERS', lang, count=total)}\n\n"
     )
     if today and today.get("text"):
         short = today["text"][:200] + "..." if len(today["text"]) > 200 else today["text"]
-        text += f"📅 Факт на сегодня:\n{short}\n\n"
+        text += t("ADMIN_DAILY_FACTS_TODAY", lang, text=short) + "\n\n"
 
-    text += f"📚 История: {len(history)} фактов"
+    text += t("ADMIN_DAILY_FACTS_HISTORY", lang, count=len(history))
 
-    toggle = "❌ Выключить" if enabled else "✅ Включить"
+    toggle = t("ADMIN_BTN_TOGGLE_OFF", lang) if enabled else t("ADMIN_BTN_TOGGLE_ON", lang)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle, callback_data="daily_facts_toggle")],
-        [InlineKeyboardButton(text="🧪 Отправить сейчас (себе)", callback_data="daily_facts_test")],
-        [InlineKeyboardButton(text="🔄 Сгенерировать новый", callback_data="daily_facts_regen")],
-        [InlineKeyboardButton(text="📚 История", callback_data="daily_facts_history")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_SEND_NOW", lang), callback_data="daily_facts_test")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_REGEN", lang), callback_data="daily_facts_regen")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_HISTORY", lang), callback_data="daily_facts_history")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="admin_back")],
     ])
     try:
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -982,18 +1042,22 @@ async def admin_daily_facts(callback: CallbackQuery):
 
 @router.callback_query(F.data == "daily_facts_toggle")
 async def daily_facts_toggle(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_daily_fact_settings, set_daily_fact_settings
     settings = await get_daily_fact_settings()
     new = not settings.get("enabled", True)
     await set_daily_fact_settings(enabled=new)
-    await callback.answer("✅ Изменено", show_alert=True)
+    await callback.answer(t("ADMIN_TOGGLED", lang), show_alert=True)
     await admin_daily_facts(callback)
 
 
 @router.callback_query(F.data == "daily_facts_test")
 async def daily_facts_test(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     try:
@@ -1003,11 +1067,13 @@ async def daily_facts_test(callback: CallbackQuery):
         await callback.answer("✅ Отправлено" if ok else "❌ Ошибка", show_alert=True)
     except Exception as e:
         logger.error(f"Тест фактов: {e}")
-        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+        await callback.answer(t("ADMIN_ERR_DETAIL", lang, err=e), show_alert=True)
 
 
 @router.callback_query(F.data == "daily_facts_regen")
 async def daily_facts_regen(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     try:
@@ -1017,26 +1083,28 @@ async def daily_facts_regen(callback: CallbackQuery):
         if new_fact:
             await set_today_fact(new_fact)
             await save_fact_history(new_fact)
-            await callback.answer("✅ Сгенерирован", show_alert=True)
+            await callback.answer(t("ADMIN_FACTS_REGEN_OK", lang), show_alert=True)
         else:
-            await callback.answer("❌ Не удалось", show_alert=True)
+            await callback.answer(t("ADMIN_FACTS_REGEN_FAIL", lang), show_alert=True)
     except Exception as e:
         logger.error(f"Регенерация: {e}")
-        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+        await callback.answer(t("ADMIN_ERR_DETAIL", lang, err=e), show_alert=True)
     await admin_daily_facts(callback)
 
 
 @router.callback_query(F.data == "daily_facts_history")
 async def daily_facts_history(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         return
     from database.postgres_db import get_fact_history
     history = await get_fact_history()
     if not history:
-        await callback.answer("История пуста", show_alert=True)
+        await callback.answer(t("ADMIN_FACTS_HISTORY_EMPTY", lang), show_alert=True)
         return
 
-    text = "📚 ИСТОРИЯ ФАКТОВ (7 дней)\n\n"
+    text = t("ADMIN_FACTS_HISTORY_TITLE", lang) + "\n\n"
     for i, item in enumerate(history[:7], 1):
         short = item["text"][:150] + "..." if len(item["text"]) > 150 else item["text"]
         text += f"{i}. [{item['date']}]\n{short}\n\n"
@@ -1059,6 +1127,8 @@ class AdminManageStates(StatesGroup):
 
 @router.callback_query(F.data == "admin_manage_admins")
 async def admin_manage_admins(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     if not await is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
@@ -1072,20 +1142,20 @@ async def admin_manage_admins(callback: CallbackQuery):
     extra_list = "\n".join([f"  • {a}" for a in extra]) if extra else "  (нет)"
 
     text = (
-        f"👑 УПРАВЛЕНИЕ АДМИНАМИ\n\n"
-        f"🔑 Главные (из .env):\n{main_list}\n\n"
-        f"➕ Дополнительные:\n{extra_list}\n\n"
+        f"{t('ADMIN_ADMINS_TITLE', lang)}\n\n"
+        f"{t('ADMIN_ADMINS_MAIN', lang)}\n{main_list}\n\n"
+        f"{t('ADMIN_ADMINS_EXTRA', lang)}\n{extra_list}\n\n"
     )
 
     if is_main:
-        text += "💡 Вы можете добавлять и удалять."
+        text += t("ADMIN_ADMINS_HINT", lang)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить", callback_data="admins_add")],
-            [InlineKeyboardButton(text="🗑️ Удалить", callback_data="admins_remove")],
+            [InlineKeyboardButton(text=t("ADMIN_BTN_ADD", lang), callback_data="admins_add")],
+            [InlineKeyboardButton(text=t("ADMIN_BTN_REMOVE", lang), callback_data="admins_remove")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
         ])
     else:
-        text += "⚠️ Только главный админ."
+        text += t("ADMIN_ADMINS_ONLY_MAIN", lang)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")],
         ])
@@ -1098,71 +1168,76 @@ async def admin_manage_admins(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admins_add")
 async def admins_add_start(callback: CallbackQuery, state: FSMContext):
+    lang = await _admin_lang(callback.from_user.id)
+
     from database.postgres_db import is_main_admin
     if not await is_main_admin(callback.from_user.id):
-        await callback.answer("❌ Только главный админ.", show_alert=True)
+        await callback.answer(t("ADMIN_ADMINS_ONLY_MAIN_ALERT", lang), show_alert=True)
         return
     await state.set_state(AdminManageStates.waiting_new_admin_id)
     await callback.message.edit_text(
-        "👑 ДОБАВИТЬ АДМИНА\n\n"
-        "Введите ID нового админа:\n"
-        "Например: 123456789\n\n"
-        "⚠️ Новый админ получит полный доступ.\n\n"
+        f"{t('ADMIN_ADMINS_ADD_TITLE', lang)}\n\n"
+        f"{t('ADMIN_ADMINS_ADD_HINT', lang)}\n"
+        f"{t('ADMIN_ADMINS_ADD_EXAMPLE', lang)}\n\n"
+        f"{t('ADMIN_ADMINS_ADD_WARNING', lang)}\n\n"
         "/cancel — отмена"
     )
 
 
 @router.message(AdminManageStates.waiting_new_admin_id)
 async def admins_add_save(message: Message, state: FSMContext):
+    lang = await _admin_lang(message.from_user.id)
+
     from database.postgres_db import is_main_admin, add_extra_admin
     if not await is_main_admin(message.from_user.id):
         await state.clear()
         return
     if message.text == "/cancel":
         await state.clear()
-        await message.answer("Отменено")
+        await message.answer(t("ADMIN_CANCELLED", lang))
         return
     try:
         new_id = int(message.text.strip())
         if new_id <= 0:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Введите положительное число (ID).")
+        await message.answer(t("ADMIN_ADMINS_ERR_NUMBER", lang))
         return
 
     from config import ADMINS as MAIN_ADMINS
     if new_id in MAIN_ADMINS:
-        await message.answer("❌ Уже главный админ.")
+        await message.answer(t("ADMIN_ADMINS_ALREADY_MAIN", lang))
         await state.clear()
         return
 
     success = await add_extra_admin(new_id)
     if success:
-        await message.answer(f"✅ Админ {new_id} добавлен.")
+        await message.answer(t("ADMIN_ADMINS_ADDED", lang, new_id=new_id))
         try:
             from loader import bot
             await bot.send_message(
                 new_id,
-                "👑 Вам предоставлены права администратора AstroBot.\n\n"
-                "Теперь вам доступна /admin."
+                t("ADMIN_ADMINS_NOTIFY", lang)
             )
         except Exception:
             pass
     else:
-        await message.answer(f"❌ {new_id} уже админ.")
+        await message.answer(t("ADMIN_ADMINS_ALREADY", lang, new_id=new_id))
     await state.clear()
     await show_admin_panel(message)
 
 
 @router.callback_query(F.data == "admins_remove")
 async def admins_remove_menu(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     from database.postgres_db import is_main_admin, get_extra_admins
     if not await is_main_admin(callback.from_user.id):
-        await callback.answer("❌ Только главный админ.", show_alert=True)
+        await callback.answer(t("ADMIN_ADMINS_ONLY_MAIN_ALERT", lang), show_alert=True)
         return
     extra = await get_extra_admins()
     if not extra:
-        await callback.answer("Нет доп. админов.", show_alert=True)
+        await callback.answer(t("ADMIN_ADMINS_NO_EXTRA", lang), show_alert=True)
         return
     buttons = []
     for admin_id in extra:
@@ -1172,38 +1247,42 @@ async def admins_remove_menu(callback: CallbackQuery):
         )])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_manage_admins")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await callback.message.edit_text("🗑️ ВЫБЕРИТЕ АДМИНА", reply_markup=keyboard)
+    await callback.message.edit_text(t("ADMIN_ADMINS_CHOOSE_REMOVE", lang), reply_markup=keyboard)
 
 
 # ВАЖНО: сначала более специфичный фильтр (do_), потом общий (rm_)
 @router.callback_query(F.data.startswith("admin_rm_do_"))
 async def admins_remove_do(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     from database.postgres_db import is_main_admin, remove_extra_admin
     if not await is_main_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа.", show_alert=True)
+        await callback.answer(t("ADMIN_NO_ACCESS", lang), show_alert=True)
         return
     target_id = int(callback.data.replace("admin_rm_do_", ""))
     success = await remove_extra_admin(target_id)
     if success:
-        await callback.answer(f"✅ Админ {target_id} удалён", show_alert=True)
+        await callback.answer(t("ADMIN_ADMINS_REMOVED_ALERT", lang, target_id=target_id), show_alert=True)
         try:
             from loader import bot
             await bot.send_message(
                 target_id,
-                "⚠️ Ваши права администратора отозваны."
+                f"{t('ADMIN_ADMINS_REVOKED', lang)}\n"
             )
         except Exception:
             pass
     else:
-        await callback.answer("❌ Не найден", show_alert=True)
+        await callback.answer(t("ADMIN_ADMINS_NOT_FOUND", lang), show_alert=True)
     await admin_manage_admins(callback)
 
 
 @router.callback_query(F.data.startswith("admin_rm_"))
 async def admins_remove_confirm(callback: CallbackQuery):
+    lang = await _admin_lang(callback.from_user.id)
+
     from database.postgres_db import is_main_admin
     if not await is_main_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа.", show_alert=True)
+        await callback.answer(t("ADMIN_NO_ACCESS", lang), show_alert=True)
         return
     # Парсим только если не do_
     raw = callback.data.replace("admin_rm_", "")
@@ -1215,10 +1294,10 @@ async def admins_remove_confirm(callback: CallbackQuery):
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да", callback_data=f"admin_rm_do_{target_id}")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_manage_admins")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_YES", lang), callback_data=f"admin_rm_do_{target_id}")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CANCEL", lang), callback_data="admin_manage_admins")],
     ])
     await callback.message.edit_text(
-        f"⚠️ Удалить админа {target_id}?",
+        t("ADMIN_ADMINS_REMOVE_CONFIRM", lang, target_id=target_id),
         reply_markup=keyboard
     )
