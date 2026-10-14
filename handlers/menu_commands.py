@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+# {user_id: {"chat_id": int, "msg_ids": [list of message_ids]}}
 _last_menus_cache: dict = {}
 _user_locks: dict = {}
 

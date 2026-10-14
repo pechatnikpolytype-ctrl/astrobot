@@ -1203,11 +1203,20 @@ async def set_last_menus(user_id: int, chat_id: int, fact_id: int = None, inline
     """Сохраняет ID последних меню-сообщений."""
     key = f"last_menus_{user_id}"
     current = await get_setting(key, {}) or {}
+    # Собираем список extras (предыдущие ID)
+    extras = current.get("extras", [])
+    for old_id in (current.get("fact_id"), current.get("inline_id")):
+        if old_id and old_id not in extras:
+            extras.append(old_id)
+    # Ограничиваем 10
+    extras = extras[-10:]
+
     if fact_id is not None:
         current["fact_id"] = fact_id
     if inline_id is not None:
         current["inline_id"] = inline_id
     current["chat_id"] = chat_id
+    current["extras"] = extras
     await set_setting(key, current)
 
 
