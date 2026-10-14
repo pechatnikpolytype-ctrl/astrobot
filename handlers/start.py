@@ -69,18 +69,26 @@ async def start_handler(message: Message, command: CommandObject = None):
 
     await create_user(user_id, username, first_name)
 
-    # Автоопределение языка (только если включена мультиязычность)
+    # Проверка: если у юзера нет языка — показать выбор (кроме случая явного выбора)
     if MULTILANG_ENABLED:
         try:
             user_data = await get_user(user_id)
-            # Если у юзера нет language (новый или старый без колонки) — определим
             if not user_data or not user_data.get("language"):
-                tg_code = getattr(message.from_user, "language_code", None)
-                detected = detect_from_telegram(tg_code)
-                await update_user_language(user_id, detected)
-                logger.info(f"🌐 Язык для {user_id}: {detected} (tg={tg_code})")
+                # Показать меню выбора языка
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                from locales import get_lang_name
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=get_lang_name("ru"), callback_data="lang_first_ru")],
+                    [InlineKeyboardButton(text=get_lang_name("en"), callback_data="lang_first_en")],
+                    [InlineKeyboardButton(text=get_lang_name("de"), callback_data="lang_first_de")],
+                ])
+                await message.answer(
+                    "🌍 Выберите язык / Choose language / Sprache wählen:",
+                    reply_markup=kb,
+                )
+                return
         except Exception as e:
-            logger.warning(f"Автоопределение языка: {e}")
+            logger.warning(f"lang check: {e}")
 
     # Меню с фактом
     from handlers.menu_commands import show_main_menu_from_start

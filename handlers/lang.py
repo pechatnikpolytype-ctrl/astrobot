@@ -35,6 +35,34 @@ async def _get_user_lang(user_id: int) -> str:
         return "ru"
 
 
+@router.callback_query(F.data.startswith("lang_first_"))
+async def lang_first(callback: CallbackQuery):
+    """Первый выбор языка при /start."""
+    user_id = callback.from_user.id
+    new_lang = callback.data.replace("lang_first_", "")
+    if new_lang not in SUPPORTED:
+        await callback.answer("❌", show_alert=True)
+        return
+
+    try:
+        await update_user_language(user_id, new_lang)
+    except Exception as e:
+        logger.error(f"save lang error: {e}")
+        await callback.answer("❌", show_alert=True)
+        return
+
+    # Удалить сообщение с выбором
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    # Показать приветствие и меню
+    from handlers.menu_commands import _show_main_menu
+    await _show_main_menu(callback.message, bot=callback.bot)
+    await callback.answer()
+
+
 @router.callback_query(F.data == "lang_menu")
 async def lang_menu(callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -69,11 +97,14 @@ async def lang_set(callback: CallbackQuery):
     except Exception:
         await callback.message.answer(text, reply_markup=_lang_keyboard(new_lang))
 
-    # Обновляем reply-клавиатуру через правильную функцию
+    # Обновить ТОЛЬКО reply-клавиатуру (молча, без факта/меню)
     try:
-        from handlers.menu_commands import show_main_menu_from_callback
-        await show_main_menu_from_callback(callback, bot=callback.bot)
+        from keyboards.main import main_reply_keyboard
+        await callback.message.answer(
+            "✅",  # тонкое сообщение чтобы Telegram обновил reply-клавиатуру
+            reply_markup=main_reply_keyboard(new_lang),
+        )
     except Exception as e:
-        logger.warning(f"refresh menu after lang: {e}")
+        logger.warning(f"reply keyboard update: {e}")
 
     await callback.answer()
