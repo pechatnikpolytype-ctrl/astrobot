@@ -1,18 +1,19 @@
-"""Обработчик выбора языка."""
+"""Language selection handler."""
 import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.context import FSMContext
 
 from locales import t, get_lang_name, SUPPORTED
-from database.postgres_db import get_user, update_user_language
+from database.postgres_db import get_user, update_user_language, get_user_lang_cached
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
-def _lang_keyboard(current: str):
-    """Кнопки выбора языка."""
+def _lang_keyboard(current: str, lang: str = None):
+    """Языковая клавиатура с переводом кнопок."""
+    if lang is None:
+        lang = current
     buttons = []
     for code in SUPPORTED:
         mark = "✅ " if code == current else ""
@@ -21,16 +22,14 @@ def _lang_keyboard(current: str):
             callback_data=f"lang_set_{code}",
         )])
     buttons.append([InlineKeyboardButton(
-        text="🔙 Назад",
+        text=t("LANG_BUTTON_BACK", lang) if t("LANG_BUTTON_BACK", lang) != "LANG_BUTTON_BACK" else "🔙 Назад",
         callback_data="main_menu",
     )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 async def _get_user_lang(user_id: int) -> str:
-    """Свежий язык из БД (через кэш)."""
     try:
-        from database.postgres_db import get_user_lang_cached
         return await get_user_lang_cached(user_id)
     except Exception:
         return "ru"
@@ -60,8 +59,8 @@ async def lang_set(callback: CallbackQuery):
     try:
         await update_user_language(user_id, new_lang)
     except Exception as e:
-        logger.error(f"Ошибка сохранения языка: {e}")
-        await callback.answer("❌ Ошибка", show_alert=True)
+        logger.error(f"save lang error: {e}")
+        await callback.answer("❌", show_alert=True)
         return
 
     text = t("LANG_CHANGED", new_lang, name=get_lang_name(new_lang))
@@ -69,4 +68,12 @@ async def lang_set(callback: CallbackQuery):
         await callback.message.edit_text(text, reply_markup=_lang_keyboard(new_lang))
     except Exception:
         await callback.message.answer(text, reply_markup=_lang_keyboard(new_lang))
+
+    # Обновляем reply-клавиатуру через правильную функцию
+    try:
+        from handlers.menu_commands import show_main_menu_from_callback
+        await show_main_menu_from_callback(callback, bot=callback.bot)
+    except Exception as e:
+        logger.warning(f"refresh menu after lang: {e}")
+
     await callback.answer()

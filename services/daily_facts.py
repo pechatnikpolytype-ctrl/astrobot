@@ -67,17 +67,25 @@ async def send_daily_facts(bot: Bot):
         logger.info("Daily facts disabled")
         return
 
-    today_fact_ru = await get_today_fact()
-    fact_text_ru = None
-    if today_fact_ru and today_fact_ru.get("text"):
-        fact_text_ru = today_fact_ru["text"]
-        logger.info("Fact from cache")
-    else:
-        fact_text_ru = await generate_fact("ru")
-        if not fact_text_ru:
-            return
-        await set_today_fact(fact_text_ru)
-        await save_fact_history(fact_text_ru)
+    # Prepare AI facts for all 3 languages (each cached separately)
+    facts_by_lang = {}
+    for lang in ["ru", "en", "de"]:
+        cached = await get_today_fact(lang)
+        if cached and cached.get("text"):
+            facts_by_lang[lang] = cached["text"]
+            logger.info(f"Fact from cache: {lang}")
+        else:
+            fact_text = await generate_fact(lang)
+            if fact_text:
+                await set_today_fact(fact_text, lang)
+                facts_by_lang[lang] = fact_text
+                if lang == "ru":
+                    await save_fact_history(fact_text)
+                logger.info(f"New fact: {lang}")
+
+    if not facts_by_lang:
+        logger.warning("No facts generated")
+        return
 
     users = await get_all_users()
     if not users:
@@ -91,10 +99,9 @@ async def send_daily_facts(bot: Bot):
         user_id = user["user_id"]
         try:
             lang = await _lang_safe(user_id)
-            if lang == "ru":
-                fact_text = fact_text_ru
-            else:
-                fact_text = t(random.choice(FACT_KEYS), lang)
+            fact_text = facts_by_lang.get(lang) or facts_by_lang.get("ru")
+            if not fact_text:
+                continue
 
             divider = "\u2501" * 24
             text = (

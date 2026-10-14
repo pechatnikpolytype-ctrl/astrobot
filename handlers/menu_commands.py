@@ -139,6 +139,26 @@ async def cmd_menu(message: Message, state: FSMContext, bot: Bot):
         await _show_main_menu(message, bot)
 
 
+@router.message(F.text.in_(["🏠 Меню", "🏠 Menu", "🏠 Menü"]))
+async def reply_menu(message: Message, state: FSMContext, bot: Bot):
+    """Reply кнопка '🏠 Меню' / 'Menu' / 'Menü'."""
+    user_id = message.from_user.id
+    lock = _get_lock(user_id)
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    if lock.locked():
+        return
+
+    async with lock:
+        await state.clear()
+        await _delete_previous_menus(bot, user_id)
+        await _show_main_menu(message, bot)
+
+
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
@@ -166,6 +186,60 @@ async def show_main_menu_from_start(message: Message, bot: Bot = None):
     lock = _get_lock(user_id)
     async with lock:
         await _show_main_menu(message, bot)
+
+
+async def show_main_menu_from_callback(callback, bot: Bot = None):
+    """Показ меню из callback — с ПРАВИЛЬНЫМ user_id."""
+    user_id = callback.from_user.id  # callback.from_user, не message.from_user!
+    chat_id = callback.message.chat.id
+    lock = _get_lock(user_id)
+    async with lock:
+        # Явно используем callback.from_user.id
+        await _show_main_menu_from_ids(user_id, chat_id, callback.message, bot)
+
+
+async def _show_main_menu_from_ids(user_id: int, chat_id: int, message_ref, bot: Bot = None):
+    """Внутренний helper — работает с явными user_id и chat_id."""
+    import asyncio as _asyncio
+    from config import FREE_MODE
+    from keyboards.main import main_menu_keyboard, main_reply_keyboard
+
+    lang = await _lang(user_id)
+
+    try:
+        paid, admin = await _asyncio.gather(is_paid(user_id), is_admin(user_id))
+    except Exception:
+        paid, admin = False, False
+
+    fact_text = get_menu_fact(lang)
+    fact_msg = await message_ref.answer(fact_text, reply_markup=main_reply_keyboard(lang))
+
+    if not paid and not admin and not FREE_MODE:
+        from keyboards.main import payment_keyboard
+        inline_msg = await message_ref.answer(
+            t("SUBSCRIPTION_INACTIVE", lang),
+            reply_markup=await payment_keyboard(lang),
+        )
+    else:
+        inline_msg = await message_ref.answer(
+            t("MENU_TITLE", lang),
+            reply_markup=main_menu_keyboard(user_id, lang),
+        )
+
+    _last_menus_cache[user_id] = {
+        "chat_id": chat_id,
+        "fact_id": fact_msg.message_id,
+        "inline_id": inline_msg.message_id,
+    }
+
+    _asyncio.create_task(_save_menus_bg(
+        user_id, chat_id, fact_msg.message_id, inline_msg.message_id
+    ))
+
+    try:
+        await _maybe_show_ad(message_ref, user_id, chat_id)
+    except Exception as e:
+        logger.warning(f"[AD ERROR] {e}")
 
 
 async def _maybe_show_ad(message: Message, user_id: int, chat_id: int):

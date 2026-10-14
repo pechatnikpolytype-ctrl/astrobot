@@ -1038,10 +1038,10 @@ async def set_daily_fact_settings(enabled: bool = None, hour_utc: int = None,
     await set_setting("daily_fact_settings", current)
 
 
-async def get_today_fact() -> dict:
+async def get_today_fact(lang: str = "ru") -> dict:
     from datetime import datetime as dt
     today = dt.now().strftime("%Y-%m-%d")
-    data = await get_setting("daily_fact", {})
+    data = await get_setting(f"daily_fact_{lang}", {})
     if not isinstance(data, dict):
         return {}
     if data.get("date") == today:
@@ -1049,10 +1049,10 @@ async def get_today_fact() -> dict:
     return {}
 
 
-async def set_today_fact(text: str):
+async def set_today_fact(text: str, lang: str = "ru"):
     from datetime import datetime as dt
     today = dt.now().strftime("%Y-%m-%d")
-    await set_setting("daily_fact", {"date": today, "text": text})
+    await set_setting(f"daily_fact_{lang}", {"date": today, "text": text})
 
 
 async def save_fact_history(text: str):

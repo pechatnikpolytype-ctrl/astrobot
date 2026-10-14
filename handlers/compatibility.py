@@ -11,6 +11,7 @@ from database.postgres_db import is_paid, get_setting, set_setting, is_admin, ge
 from config import ADMINS, MULTILANG_ENABLED
 from astrology_calculator import AstrologyCalculator, sign_display
 from locales import t
+from ai_service_n1n import ai_service
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -71,13 +72,13 @@ def parse_input(text: str) -> dict:
     return {"type": None, "value": None, "sign": None}
 
 
-def build_cache_key(p1: dict, p2: dict) -> str:
+def build_cache_key(p1: dict, p2: dict, lang: str = "ru") -> str:
     if p1["type"] == "date" and p2["type"] == "date":
         dates = sorted([p1["value"], p2["value"]])
-        return f"compat_{dates[0]}_{dates[1]}"
+        return f"compat_{dates[0]}_{dates[1]}_{lang}"
     else:
         signs = sorted([p1["sign"].lower(), p2["sign"].lower()])
-        return f"compat_{signs[0]}_{signs[1]}"
+        return f"compat_{signs[0]}_{signs[1]}_{lang}"
 
 
 # ============================================================
@@ -209,7 +210,7 @@ async def process_partner2(message: Message, state: FSMContext):
 
     processing_msg = await message.answer(t("COMPAT_PROCESSING", lang))
 
-    cache_key = build_cache_key(p1, p2)
+    cache_key = build_cache_key(p1, p2, lang=lang)
     result = None
     from_cache = False
 
