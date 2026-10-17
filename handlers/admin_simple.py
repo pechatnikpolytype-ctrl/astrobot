@@ -67,22 +67,28 @@ async def show_admin_panel(target, edit: bool = True):
         text += "  " + t("ADMIN_TARIFF_LINE", lang, days=info['days'], stars=info['stars']) + "\n"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t("ADMIN_BTN_PRICING", lang), callback_data="admin_pricing"),
-         InlineKeyboardButton(text=t("ADMIN_BTN_BALANCE", lang), callback_data="admin_balance")],
-        [InlineKeyboardButton(text=t("ADMIN_BTN_TRIAL", lang), callback_data="admin_trial"),
-         InlineKeyboardButton(text=t("ADMIN_BTN_AI", lang), callback_data="admin_ai")],
-	 [InlineKeyboardButton(text=t("ADMIN_BTN_REMINDERS", lang), callback_data="admin_reminders"),
-     InlineKeyboardButton(text=t("ADMIN_BTN_CLEANUP", lang), callback_data="admin_cleanup")],
-        [InlineKeyboardButton(text=t("ADMIN_BTN_AI_HISTORY", lang), callback_data="admin_ai_history"),
-         InlineKeyboardButton(text=t("ADMIN_BTN_CACHE", lang), callback_data="admin_cache")],
+        # --- Основное ---
         [InlineKeyboardButton(text=t("ADMIN_BTN_STATS", lang), callback_data="admin_stats"),
          InlineKeyboardButton(text=t("ADMIN_BTN_USERS", lang), callback_data="admin_users")],
         [InlineKeyboardButton(text=t("ADMIN_BTN_SUBS", lang), callback_data="admin_subs"),
-         InlineKeyboardButton(text=t("ADMIN_BTN_BROADCAST", lang), callback_data="admin_broadcast")],
-                [InlineKeyboardButton(text=t("ADMIN_BTN_DAILY_FACTS", lang), callback_data="admin_daily_facts")],
+         InlineKeyboardButton(text=t("ADMIN_BTN_PRICING", lang), callback_data="admin_pricing")],
+        # --- Финансы ---
+        [InlineKeyboardButton(text=t("ADMIN_BTN_TRIAL", lang), callback_data="admin_trial"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_BALANCE", lang), callback_data="admin_balance")],
+        # --- AI ---
+        [InlineKeyboardButton(text=t("ADMIN_BTN_AI", lang), callback_data="admin_ai"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_AI_HISTORY", lang), callback_data="admin_ai_history")],
+        [InlineKeyboardButton(text=t("ADMIN_BTN_CACHE", lang), callback_data="admin_cache"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_CLEANUP", lang), callback_data="admin_cleanup")],
+        # --- Автоматизация ---
+        [InlineKeyboardButton(text=t("ADMIN_BTN_REMINDERS", lang), callback_data="admin_reminders"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_DAILY_FACTS", lang), callback_data="admin_daily_facts")],
+        # --- Коммуникация ---
+        [InlineKeyboardButton(text=t("ADMIN_BTN_BROADCAST", lang), callback_data="admin_broadcast"),
+         InlineKeyboardButton(text=t("ADMIN_BTN_ADS", lang), callback_data="admin_ads")],
+        # --- Админы + Меню ---
         [InlineKeyboardButton(text=t("ADMIN_BTN_ADMINS", lang), callback_data="admin_manage_admins")],
-        [InlineKeyboardButton(text=t("ADMIN_BTN_ADS", lang), callback_data="admin_ads")],
-        [InlineKeyboardButton(text=t("ADMIN_BTN_BACK", lang), callback_data="main_menu")],
+        [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
     ])
 
     if isinstance(target, Message):

@@ -31,6 +31,7 @@ from handlers.compatibility import router as compatibility_router
 from handlers.profile import router as profile_router
 from handlers.pdf_handler import router as pdf_router
 from handlers.payment import router as payment_router
+from handlers.dreams import router as dreams_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +51,7 @@ async def main():
     dp = Dispatcher()
 
     dp.include_router(start_router)
+    dp.include_router(dreams_router)
     if MULTILANG_ENABLED:
         dp.include_router(lang_router)
     dp.include_router(tarot_router)

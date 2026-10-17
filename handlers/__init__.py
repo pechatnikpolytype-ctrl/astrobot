@@ -13,6 +13,7 @@ from .menu_commands import router as menu_router
 from .mood_diary import router as mood_router
 from .admin_ads import router as ads_router
 from .tarot import router as tarot_router
+from .dreams import router as dreams_router
 __all__ = [
     "start_router",
     "lang_router",
@@ -28,4 +29,5 @@ __all__ = [
     'mood_router',
     'ads_router',
     'tarot_router',
+    'dreams_router',
 ]

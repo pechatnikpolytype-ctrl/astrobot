@@ -24,16 +24,22 @@ async def payment_keyboard(lang: str = "ru"):
 
 
 def main_menu_keyboard(user_id, lang: str = "ru"):
+    """Главное меню. Порядок: AI-фичи → PDF → Профиль → Язык → Админ."""
     kb = InlineKeyboardBuilder()
+    # --- AI / астро-фичи ---
     kb.button(text=t("BTN_NATAL", lang), callback_data="natal_chart")
     kb.button(text=t("BTN_AI", lang), callback_data="ai_question")
     kb.button(text=t("BTN_HOROSCOPE", lang), callback_data="daily_horoscope")
     kb.button(text=t("BTN_COMPAT", lang), callback_data="compatibility")
-    kb.button(text=t("BTN_PROFILE", lang), callback_data="profile")
-    kb.button(text=t("BTN_DIARY", lang), callback_data="mood_diary")
     kb.button(text=t("BTN_TAROT", lang), callback_data="tarot_menu")
+    kb.button(text=t("BTN_DREAMS", lang), callback_data="dreams_menu")
+    kb.button(text=t("BTN_DIARY", lang), callback_data="mood_diary")
+    # --- PDF ---
     kb.button(text=t("BTN_PDF", lang), callback_data="generate_pdf")
+    # --- Профиль / Язык ---
+    kb.button(text=t("BTN_PROFILE", lang), callback_data="profile")
     kb.button(text=t("BTN_LANG", lang), callback_data="lang_menu")
+    # --- Админ ---
     from config import ADMINS
     if user_id in ADMINS:
         kb.button(text=t("BTN_ADMIN", lang), callback_data="admin_panel")

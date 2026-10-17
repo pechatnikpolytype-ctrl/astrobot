@@ -943,3 +943,43 @@ ADS_ERR_TEXT_SHORT = "Text zu kurz (min. 5 Zeichen)."
 ADS_ERR_LINK_FORMAT = "\u274c Link muss mit http:// oder https:// beginnen"
 ADS_BLOCK_ADDED = "\u2705 Block #{id} hinzugef\u00fcgt!"
 ADS_VIEW_WEIGHT = "Gewicht: {n}"
+
+# === Tr\u00e4ume: Limits ===
+DREAM_BTN_BUY = "\U0001F48E Premium kaufen"
+DREAM_SUB_LOCK = (
+    "\u274c Die Funktion \u00abTr\u00e4ume\u00bb ist nur mit Abo verf\u00fcgbar.\n\n"
+    "Abonniere, um sie zu nutzen."
+)
+DREAM_LIMIT_REACHED = (
+    "\u26a0\ufe0f FRAGEN-LIMIT ERREICHT\n\n"
+    "Du hast heute {usage}/{limit} Anfragen verwendet.\n"
+    "Limit wird um 00:00 UTC zur\u00fcckgesetzt.\n\n"
+    "\U0001F48E Kaufe Premium \u2014 100 Anfragen/Tag."
+)
+DREAM_LIMIT_UNLIMITED = "\U0001F52E Fragen \u00fcbrig: \u267e\ufe0f unbegrenzt"
+DREAM_LIMIT_INFO = "\U0001F52E Fragen \u00fcbrig: {left}/{limit}"
+DREAM_CACHE_NOTE = " (aus Cache, Limit nicht verbraucht)"
+DREAM_LEFT = "\u26a0\ufe0f Du hast heute {left} Anfragen \u00fcbrig."
+DREAM_LEFT_0 = "\u26a0\ufe0f Fragen-Limit f\u00fcr heute erreicht."
+
+# === Tr\u00e4ume (basic) ===
+BTN_DREAMS = "\U0001F4A4 Tr\u00e4ume"
+DREAM_MENU_TITLE = "\U0001F319 TRAUMDEUTUNG\n\nBeschreibe deinen Traum \u2014 AI entschl\u00fcsselt Symbole.\n\n\u26a0\ufe0f Gleicher Traum = gleiche Antwort."
+DREAM_BTN_NEW = "\U0001F319 Traum erz\u00e4hlen"
+DREAM_BTN_MORE = "\U0001F319 Noch ein Traum"
+DREAM_BTN_BUY = "\U0001F48E Premium kaufen"
+DREAM_ASK = "\U0001F319 BESCHREIBE DEINEN TRAUM\n\nWas hast du getr\u00e4umt? /cancel \u2014 abbrechen"
+DREAM_CANCELLED = "Abgebrochen."
+DREAM_TOO_SHORT = "\u274c Mindestens 10 Zeichen."
+DREAM_PROCESSING = "\U0001F319 Deute..."
+DREAM_ANSWER_TITLE = "\U0001F319 TRAUMDEUTUNG"
+DREAM_WHAT_NEXT = "Noch einen?"
+DREAM_ERROR = "\u274c Fehler: {err}"
+DREAM_FALLBACK = "\U0001F319 Tr\u00e4ume sind die Sprache des Unterbewusstseins."
+DREAM_SUB_LOCK = "\u274c Abo erforderlich."
+DREAM_LIMIT_REACHED = "\u26a0\ufe0f Limit erreicht: {usage}/{limit}"
+DREAM_LIMIT_UNLIMITED = "\U0001F52E Unbegrenzt"
+DREAM_LIMIT_INFO = "\U0001F52E \u00dcbrig: {left}/{limit}"
+DREAM_CACHE_NOTE = " (aus Cache)"
+DREAM_LEFT = "\u26a0\ufe0f {left} Anfragen \u00fcbrig."
+DREAM_LEFT_0 = "\u26a0\ufe0f Limit 0."

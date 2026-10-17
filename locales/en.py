@@ -943,3 +943,43 @@ ADS_ERR_TEXT_SHORT = "Text too short (min 5 chars)."
 ADS_ERR_LINK_FORMAT = "\u274c Link must start with http:// or https://"
 ADS_BLOCK_ADDED = "\u2705 Block #{id} added!"
 ADS_VIEW_WEIGHT = "Weight: {n}"
+
+# === Dreams: limits ===
+DREAM_BTN_BUY = "\U0001F48E Buy Premium"
+DREAM_SUB_LOCK = (
+    "\u274c The \u00abDreams\u00bb feature is available by subscription only.\n\n"
+    "Subscribe to use it."
+)
+DREAM_LIMIT_REACHED = (
+    "\u26a0\ufe0f QUESTION LIMIT REACHED\n\n"
+    "You used {usage}/{limit} requests today.\n"
+    "Limit resets at 00:00 UTC.\n\n"
+    "\U0001F48E Buy Premium \u2014 100 requests/day."
+)
+DREAM_LIMIT_UNLIMITED = "\U0001F52E Questions left: \u267e\ufe0f unlimited"
+DREAM_LIMIT_INFO = "\U0001F52E Questions left: {left}/{limit}"
+DREAM_CACHE_NOTE = " (from cache, no limit used)"
+DREAM_LEFT = "\u26a0\ufe0f You have {left} requests left today."
+DREAM_LEFT_0 = "\u26a0\ufe0f Question limit reached for today."
+
+# === Dreams (basic) ===
+BTN_DREAMS = "\U0001F4A4 Dreams"
+DREAM_MENU_TITLE = "\U0001F319 DREAM INTERPRETATION\n\nDescribe your dream \u2014 AI will decode symbols.\n\n\u26a0\ufe0f Same dream = same answer."
+DREAM_BTN_NEW = "\U0001F319 Tell a dream"
+DREAM_BTN_MORE = "\U0001F319 Another dream"
+DREAM_BTN_BUY = "\U0001F48E Buy Premium"
+DREAM_ASK = "\U0001F319 DESCRIBE YOUR DREAM\n\nWhat did you dream? /cancel \u2014 cancel"
+DREAM_CANCELLED = "Cancelled."
+DREAM_TOO_SHORT = "\u274c Min 10 characters."
+DREAM_PROCESSING = "\U0001F319 Interpreting..."
+DREAM_ANSWER_TITLE = "\U0001F319 DREAM INTERPRETATION"
+DREAM_WHAT_NEXT = "Want another?"
+DREAM_ERROR = "\u274c Error: {err}"
+DREAM_FALLBACK = "\U0001F319 Dreams are the language of subconscious."
+DREAM_SUB_LOCK = "\u274c Subscription required."
+DREAM_LIMIT_REACHED = "\u26a0\ufe0f Limit reached: {usage}/{limit}"
+DREAM_LIMIT_UNLIMITED = "\U0001F52E Unlimited"
+DREAM_LIMIT_INFO = "\U0001F52E Left: {left}/{limit}"
+DREAM_CACHE_NOTE = " (from cache)"
+DREAM_LEFT = "\u26a0\ufe0f {left} requests left."
+DREAM_LEFT_0 = "\u26a0\ufe0f Limit 0."

@@ -42,6 +42,7 @@ from handlers.compatibility import router as compatibility_router
 from handlers.profile import router as profile_router
 from handlers.pdf_handler import router as pdf_router
 from handlers.payment import router as payment_router
+from handlers.dreams import router as dreams_router
 
 dp.include_router(start_router)
 if MULTILANG_ENABLED:
@@ -58,6 +59,7 @@ dp.include_router(compatibility_router)
 dp.include_router(profile_router)
 dp.include_router(pdf_router)
 dp.include_router(payment_router)
+dp.include_router(dreams_router)
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
