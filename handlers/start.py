@@ -5,16 +5,14 @@ from aiogram.types import Message, CallbackQuery
 from database.postgres_db import (
     create_user, is_paid, has_trial_used,
     set_trial_used, set_subscription, get_trial,
-    get_user, add_referral, get_referral_settings,
-    count_user_referrals_with_bonus, mark_referral_bonus_paid,
-    set_last_menus, get_last_menus,
-    update_user_language, get_user_lang_cached,
+    get_user, get_referral_settings, get_user_lang_cached,
+    add_referral, count_user_referrals_with_bonus, mark_referral_bonus_paid,
 )
 from keyboards.main import (
     welcome_keyboard, main_menu_keyboard, payment_keyboard, main_reply_keyboard,
 )
 from config import ADMINS, FREE_MODE, MULTILANG_ENABLED
-from locales import t, detect_from_telegram
+from locales import t
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,11 +39,7 @@ async def _process_referral(new_user_id: int, referrer_id: int):
     await mark_referral_bonus_paid(new_user_id)
     try:
         from loader import bot
-        ref_lang = await get_user_lang_cached(referrer_id)
-        await bot.send_message(
-            referrer_id,
-            t("REFERRAL_NEW_USER", ref_lang, bonus_days=bonus_days),
-        )
+        await bot.send_message(referrer_id, f"🎉 По вашей ссылке зарегистрировался новый! Вам начислено {bonus_days} дней.")
     except Exception:
         pass
 
@@ -69,12 +63,33 @@ async def start_handler(message: Message, command: CommandObject = None):
 
     await create_user(user_id, username, first_name)
 
-    # Проверка: если у юзера нет языка — показать выбор (кроме случая явного выбора)
+    # === ТРИАЛ ===
+    if not FREE_MODE:
+        trial_used = await has_trial_used(user_id)
+        paid = await is_paid(user_id)
+        trial = await get_trial()
+
+        # Триал включён и юзер ещё не использовал и не оплачивал
+        if trial.get("enabled", True) and not trial_used and not paid:
+            trial_days = trial.get("days", 3)
+            await set_subscription(user_id, trial_days)
+            await set_trial_used(user_id)
+            await message.answer(
+                f"🎁 Вам активирован пробный период на {trial_days} дн.!\\n"
+                f"Пользуйтесь всеми функциями бота бесплатно."
+            )
+        elif not paid and trial_used:
+            await message.answer(
+                "🔒 Пробный период закончился. Оформите подписку:",
+                reply_markup=await payment_keyboard(),
+            )
+            return
+
+    # Выбор языка (если включена мультиязычность)
     if MULTILANG_ENABLED:
         try:
             user_data = await get_user(user_id)
             if not user_data or not user_data.get("language"):
-                # Показать меню выбора языка
                 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                 from locales import get_lang_name
                 kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -82,15 +97,12 @@ async def start_handler(message: Message, command: CommandObject = None):
                     [InlineKeyboardButton(text=get_lang_name("en"), callback_data="lang_first_en")],
                     [InlineKeyboardButton(text=get_lang_name("de"), callback_data="lang_first_de")],
                 ])
-                await message.answer(
-                    "🌍 Выберите язык / Choose language / Sprache wählen:",
-                    reply_markup=kb,
-                )
+                await message.answer("🌍 Выберите язык:", reply_markup=kb)
                 return
         except Exception as e:
             logger.warning(f"lang check: {e}")
 
-    # Меню с фактом
+    # Показ главного меню
     from handlers.menu_commands import show_main_menu_from_start
     await show_main_menu_from_start(message, bot=None)
 
@@ -98,34 +110,32 @@ async def start_handler(message: Message, command: CommandObject = None):
 @router.callback_query(F.data == "check_status")
 async def check_status(callback: CallbackQuery):
     user_id = callback.from_user.id
-    lang = await get_user_lang_cached(user_id) if MULTILANG_ENABLED else "ru"
     is_paid_user = await is_paid(user_id)
     admin_flag = user_id in ADMINS
     if is_paid_user or admin_flag:
         await callback.message.edit_text(
-            t("MENU_TITLE", lang),
-            reply_markup=main_menu_keyboard(user_id, lang),
+            "🏠 Главное меню:",
+            reply_markup=main_menu_keyboard(user_id)
         )
     else:
         await callback.message.edit_text(
-            t("TRIAL_ENDED", lang),
-            reply_markup=await payment_keyboard(lang),
+            "🔒 Пробный период закончился. Выберите тариф:",
+            reply_markup=await payment_keyboard()
         )
 
 
 @router.callback_query(F.data == "main_menu")
 async def main_menu(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
-    lang = await get_user_lang_cached(user_id) if MULTILANG_ENABLED else "ru"
     is_paid_user = await is_paid(user_id)
     admin_flag = user_id in ADMINS
     if not is_paid_user and not admin_flag and not FREE_MODE:
         await callback.message.edit_text(
-            t("ACCESS_DENIED", lang),
-            reply_markup=await payment_keyboard(lang),
+            "❌ Доступ запрещён.",
+            reply_markup=await payment_keyboard()
         )
         return
     await callback.message.edit_text(
-        t("MENU_TITLE", lang),
-        reply_markup=main_menu_keyboard(user_id, lang),
+        "🏠 Главное меню:",
+        reply_markup=main_menu_keyboard(user_id)
     )
