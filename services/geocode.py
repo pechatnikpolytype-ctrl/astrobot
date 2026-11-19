@@ -5,7 +5,7 @@ from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 
 logger = logging.getLogger(__name__)
-_geocoder = Nominatim(user_agent="astrobot/1.0", timeout=10)
+_geocoder = Nominatim(user_agent="astrobot_taro/1.0 (contact: support@astrotaro.example)", timeout=10)
 _tf = TimezoneFinder()
 _cache = {}  # place_lower -> (lat, lng, tz_str) | None
 
@@ -21,7 +21,7 @@ async def resolve_birth_place(place: str):
         locs = await asyncio.to_thread(_geocoder.geocode, place, exactly_one=False, language="ru", limit=5)
     except Exception as e:
         logger.warning(f"geocode fail '{place}': {e}")
-        _cache[key] = None
+        # не кэшируем None при временных ошибках (429/сеть), чтобы можно было повторить
         return (None, None, None)
     if not locs:
         _cache[key] = None
