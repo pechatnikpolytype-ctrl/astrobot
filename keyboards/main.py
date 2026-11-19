@@ -43,6 +43,7 @@ def main_menu_keyboard(user_id, lang: str = "ru"):
     from config import ADMINS
     if user_id in ADMINS:
         kb.button(text=t("BTN_ADMIN", lang), callback_data="admin_panel")
+    kb.button(text='👤 Поддержка', url='https://t.me/Nimforman')
     kb.adjust(2)
     return kb.as_markup()
 
@@ -66,6 +67,7 @@ def ai_question_keyboard(lang: str = "ru"):
     ask, examples = labels.get(lang, labels["ru"])
     kb.button(text=ask, callback_data="ask_ai")
     kb.button(text=examples, callback_data="ai_examples")
+    kb.button(text="👤 Поддержка", url="https://t.me/Nimforman")
     kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
     kb.adjust(1)
     return kb.as_markup()
@@ -97,6 +99,7 @@ def profile_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
     edit = {"ru": "📝 Редактировать", "en": "📝 Edit", "de": "📝 Bearbeiten"}.get(lang, "📝 Редактировать")
     kb.button(text=edit, callback_data="profile_edit")
+    kb.button(text="👤 Поддержка", url="https://t.me/Nimforman")
     kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
     return kb.as_markup()
 
@@ -117,6 +120,7 @@ def pdf_type_keyboard(lang: str = "ru"):
 
 def back_to_menu_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
+    kb.button(text="👤 Поддержка", url="https://t.me/Nimforman")
     kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
     return kb.as_markup()
 
