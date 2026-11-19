@@ -14,4 +14,4 @@ httpx>=0.25.0
 kerykeion==5.12.7
 geopy>=2.4.0
 timezonefinder>=6.5.0
-scour @ git+https://github.com/scour-project/scour.git@0.38.2
+./scour-0.38.2.tar.gz
