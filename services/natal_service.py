@@ -194,6 +194,18 @@ class NatalService:
         if lat is None:
             lat, lng, tz_str = self.get_coordinates(place_clean)
             logger.warning("geocode miss " + place_clean)
+        # guard: если tz_str не IANA (нет "/"), чиним через timezonefinder
+        if not tz_str or "/" not in str(tz_str):
+            try:
+                from timezonefinder import TimezoneFinder
+                _iana = TimezoneFinder().timezone_at(lat=lat, lng=lng) if (lat is not None and lng is not None) else None
+                if _iana:
+                    tz_str = _iana
+                    logger.warning(f"tz_str fixed via timezonefinder: {tz_str}")
+                else:
+                    logger.warning(f"tz_str still invalid: {tz_str!r}, coords=({lat},{lng})")
+            except Exception as _e:
+                logger.warning(f"timezonefinder fallback failed: {_e}")
         result = calculate_natal_local(
             name=name, year=year, month=month, day=day, hour=hour, minute=minute,
             lat=lat, lng=lng, tz_str=tz_str,
