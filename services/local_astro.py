@@ -30,7 +30,7 @@ def calculate_natal_local(
     out.mkdir(exist_ok=True)
     drawer = ChartDrawer(chart_data=chart_data)
     svg_path = out / f"natal_{name.replace(' ', '_')}.svg"
-    drawer.save_svg(output_path=out, filename=svg_path.stem, style="classic")
+    drawer.save_svg(output_path=out, filename=svg_path.stem, style="classic", remove_css_variables=True)
 
     # Собираем текстовые данные для AI-интерпретации
     planets = {}
