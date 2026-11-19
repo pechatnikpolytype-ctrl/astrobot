@@ -12,6 +12,8 @@ from astrology_calculator import AstrologyCalculator, sign_display, element_disp
 from locales import t
 from database.postgres_db import get_natal_cache, set_natal_cache
 
+from services.geocode import resolve_birth_place
+from services.local_astro import calculate_natal_local, to_chart_data
 logger = logging.getLogger(__name__)
 
 
@@ -176,8 +178,7 @@ class NatalService:
     # ============================================================
     async def create_natal_chart(self, name: str, birth_date: str,
                                   birth_time: str, birth_place: str) -> Dict[str, Any]:
-        logger.info(f"🔮 Создание натальной карты для {name}")
-
+        logger.info("Создание натальной карты (Kerykeion) для " + name)
         valid_date, date_parts, date_err = self.validate_date(birth_date)
         if not valid_date:
             raise ValueError(date_err)
@@ -187,60 +188,21 @@ class NatalService:
         valid_place, place_clean, place_err = self.validate_place(birth_place)
         if not valid_place:
             raise ValueError(place_err)
-
         year, month, day = date_parts
         hour, minute = time_parts if time_parts else (12, 0)
-        lat, lon, tz = self.get_coordinates(place_clean)
-
-        planets_to_fetch = [
-            ("Sun", "Солнце"), ("Moon", "Луна"), ("Mercury", "Меркурий"),
-            ("Venus", "Венера"), ("Mars", "Марс"), ("Jupiter", "Юпитер"),
-            ("Saturn", "Сатурн"), ("Uranus", "Уран"), ("Neptune", "Нептун"),
-            ("Pluto", "Плутон"),
-        ]
-        planets_data = []
-        for eng_name, rus_name in planets_to_fetch:
-            data = await self._fetch_planet_data(eng_name, lat, lon, year, month, day, hour, minute, tz)
-            if data:
-                planets_data.append({
-                    "name": rus_name,
-                    "sign": data["sign"],
-                    "house": str(data["house"]),
-                    "retrograde": data["retrograde"],
-                })
-            else:
-                demo_sign = self._get_demo_sign(eng_name, year, month, day)
-                planets_data.append({
-                    "name": rus_name,
-                    "sign": demo_sign,
-                    "house": str((hash(f"{eng_name}{birth_date}") % 12) + 1),
-                    "retrograde": False,
-                })
-
-        birth_date_obj = datetime(year, month, day)
-        correct_sun_sign = AstrologyCalculator.get_zodiac_sign(birth_date_obj)
-        if planets_data:
-            planets_data[0]["sign"] = correct_sun_sign
-
-        sun_sign = correct_sun_sign
-        signs_order = SIGNS_FULL
-        sun_index = signs_order.index(sun_sign) if sun_sign in signs_order else 0
-        houses = [{"number": i + 1, "sign": signs_order[(sun_index + i) % 12]} for i in range(12)]
-
-        return {
-            "sun_sign": sun_sign,
-            "element": ELEMENTS.get(sun_sign, "Неизвестно"),
-            "quality": QUALITIES.get(sun_sign, "Неизвестно"),
-            "ascendant": houses[0]["sign"],
-            "planets": planets_data,
-            "houses": houses,
-            "birth_info": {
-                "name": name,
-                "date": birth_date,
-                "time": f"{hour:02d}:{minute:02d}",
-                "place": place_clean,
-            },
-        }
+        lat, lng, tz_str = await resolve_birth_place(place_clean)
+        if lat is None:
+            lat, lng, tz_str = self.get_coordinates(place_clean)
+            logger.warning("geocode miss " + place_clean)
+        result = calculate_natal_local(
+            name=name, year=year, month=month, day=day, hour=hour, minute=minute,
+            lat=lat, lng=lng, tz_str=tz_str,
+        )
+        chart_data = to_chart_data(
+            result, name=name, date=birth_date,
+            time="%02d:%02d" % (hour, minute), place=place_clean,
+        )
+        return chart_data
 
     def _get_demo_sign(self, planet: str, year: int, month: int, day: int) -> str:
         seed = int(hashlib.md5(f"{planet}{year}{month}{day}".encode()).hexdigest()[:8], 16)
@@ -252,6 +214,9 @@ class NatalService:
     def generate_svg_chart(self, chart_data: Dict[str, Any], lang: str = "ru") -> Optional[str]:
         """Генерирует SVG-схему натальной карты без символов-заменителей."""
         try:
+            k_svg = chart_data.get('_kerykeion_svg')
+            if k_svg and os.path.exists(k_svg):
+                return k_svg
             svg_filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data["birth_info"]
             asc = chart_data["ascendant"]
