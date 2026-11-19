@@ -18,14 +18,23 @@ async def resolve_birth_place(place: str):
     if key in _cache:
         return _cache[key] or (None, None, None)
     try:
-        loc = await asyncio.to_thread(_geocoder.geocode, place, language="ru")
+        locs = await asyncio.to_thread(_geocoder.geocode, place, exactly_one=False, language="ru", limit=5)
     except Exception as e:
         logger.warning(f"geocode fail '{place}': {e}")
         _cache[key] = None
         return (None, None, None)
-    if loc is None:
+    if not locs:
         _cache[key] = None
         return (None, None, None)
+    # приоритет: Беларусь/Россия/Украина/Казахстан, иначе первый
+    preferred = None
+    for L in locs:
+        addr = (L.address or "").lower()
+        if any(x in addr for x in ["беларус", "belarus", "росси", "russia",
+                                   "украин", "ukraine", "казахстан", "kazakhstan"]):
+            preferred = L
+            break
+    loc = preferred or locs[0]
     tz = _tf.timezone_at(lat=loc.latitude, lng=loc.longitude)
     if not tz:
         _cache[key] = None
