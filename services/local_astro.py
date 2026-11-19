@@ -28,7 +28,7 @@ def calculate_natal_local(
     # Генерируем SVG
     out = Path(output_dir)
     out.mkdir(exist_ok=True)
-    drawer = ChartDrawer(chart_data=chart_data)
+    drawer = ChartDrawer(chart_data=chart_data, theme="classic")
     svg_path = out / f"natal_{name.replace(' ', '_')}.svg"
     drawer.save_svg(output_path=out, filename=svg_path.stem, style="classic", remove_css_variables=True)
 
