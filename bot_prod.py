@@ -1,3 +1,36 @@
+
+# --- Health server для Render (чтобы деплой не висел на "No open ports") ---
+import asyncio as _asyncio
+import os as _os
+
+async def _start_health_server():
+    try:
+        from aiohttp import web
+        async def _health(request):
+            return web.Response(text="OK")
+        app = web.Application()
+        app.router.add_get("/health", _health)
+        app.router.add_get("/", _health)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        port = int(_os.environ.get("PORT", "10000"))
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        print(f"[health] listening on 0.0.0.0:{port}/health")
+    except Exception as e:
+        print(f"[health] failed: {e}")
+
+def _ensure_health_server():
+    try:
+        loop = _asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_start_health_server())
+        else:
+            loop.run_until_complete(_start_health_server())
+    except Exception as e:
+        print(f"[health] ensure failed: {e}")
+# --- end health server ---
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -78,6 +111,8 @@ async def main():
     # Удаляем webhook, иначе polling не запустится
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("✅ Webhook удалён, запуск long polling...")
+
+    _ensure_health_server()
 
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

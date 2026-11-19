@@ -156,8 +156,16 @@ async def natal_finish(message: Message, state: FSMContext):
         image_path = natal_service.generate_svg_chart(chart_data, lang=lang)
         if image_path and os.path.exists(image_path):
             try:
-                doc = FSInputFile(image_path)
-                await message.answer_document(doc, caption=t("NATAL_SCHEME_CAPTION", lang))
+                # Конвертируем SVG в PNG с белым фоном для корректного отображения в Telegram
+                import cairosvg
+                png_path = image_path.replace(".svg", ".png")
+                cairosvg.svg2png(url=image_path, write_to=png_path, output_width=1200, background_color="white")
+                photo = FSInputFile(png_path)
+                await message.answer_photo(photo, caption=t("NATAL_SCHEME_CAPTION", lang))
+                try:
+                    os.remove(png_path)
+                except Exception:
+                    pass
             except Exception as img_err:
                 logger.warning(f"SVG: {img_err}")
             finally:
