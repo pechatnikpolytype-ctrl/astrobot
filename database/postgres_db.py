@@ -592,28 +592,39 @@ async def set_ai_limits(free: int, premium: int, count_cached: bool = None):
 
 
 async def is_trial_active(user_id: int) -> bool:
-    """Проверяет, активен ли триал у пользователя."""
-    trial_cfg = await get_setting("trial", {"enabled": False})
+    """Триал активен, если trial_used=True и subscription_end ещё не истёк,
+    и подписка не была продлена вручную (subscription_end <= created_at + days + 1)."""
+    trial_cfg = await get_setting("trial", {"enabled": False, "days": 14})
     if not trial_cfg.get("enabled"):
         return False
-    # Триал обычно записывается в отдельное поле, если его нет — проверяем по дате регистрации
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT created_at FROM users WHERE user_id = $1", user_id)
-    if not row or not row["created_at"]:
+        row = await conn.fetchrow(
+            "SELECT trial_used, subscription_end, created_at FROM users WHERE user_id = $1",
+            user_id,
+        )
+    if not row or not row["trial_used"] or not row["subscription_end"]:
         return False
-    # если created_at текстовый, приводим к дате
+    today = datetime.now().date()
     try:
-        from datetime import datetime, timedelta
-        if isinstance(row["created_at"], str):
-            created = datetime.fromisoformat(row["created_at"])
-        else:
-            created = row["created_at"]
-        return datetime.now() <= created + timedelta(days=trial_cfg["days"])
+        sub_end = datetime.strptime(str(row["subscription_end"])[:10], "%Y-%m-%d").date()
     except Exception:
         return False
-
-
+    if sub_end < today:
+        return False
+    # если subscription_end сильно больше created_at + days, значит была покупка
+    try:
+        created = row["created_at"]
+        if isinstance(created, str):
+            created_d = datetime.fromisoformat(created).date()
+        else:
+            created_d = created.date() if hasattr(created, "date") else created
+        trial_limit = created_d + timedelta(days=int(trial_cfg.get("days", 14)) + 1)
+        if sub_end > trial_limit:
+            return False
+    except Exception:
+        pass
+    return True
 
 async def has_ai_access(user_id: int) -> bool:
     """Проверяет, имеет ли пользователь доступ к AI-функциям.
@@ -636,6 +647,15 @@ async def get_user_ai_limit(user_id: int) -> int:
         _log.info(f"[LIMIT] user={user_id} admin -> -1")
         return -1
     limits = await get_ai_limits()
+    # Сначала проверяем триал: триал дает free, даже если is_paid=True (триал выставляет is_paid)
+    try:
+        trial = await is_trial_active(user_id)
+    except Exception:
+        trial = False
+    if trial:
+        result = limits.get("free", 20)
+        _log.info(f"[LIMIT] user={user_id} trial -> {result} (free, limits={limits})")
+        return result
     paid = await is_paid(user_id)
     result = limits.get("premium", 100) if paid else limits.get("free", 20)
     _log.info(f"[LIMIT] user={user_id} paid={paid} -> {result} (limits={limits})")
