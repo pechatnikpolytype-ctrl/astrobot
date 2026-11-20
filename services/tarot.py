@@ -276,6 +276,11 @@ async def get_or_create_reading(user_id: int, question: str, count: int = 3, lan
 
     # AI-толкование
     ai_answer = await _generate_ai_reading(user_id, question, cards, lang=lang)
+    try:
+        from database.postgres_db import increment_ai_usage
+        await increment_ai_usage(user_id)
+    except Exception:
+        pass
 
     # Сохраняем
     try:
