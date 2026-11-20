@@ -374,7 +374,7 @@ class N1NService:
     # ============================================================
     # ГОРОСКОП
     # ============================================================
-    async def generate_horoscope(self, lang: str = "ru") -> Optional[str]:
+    async def generate_horoscope(self, sign: str = "", lang: str = "ru") -> Optional[str]:
         today = datetime.now().strftime("%d.%m.%Y")
         lang_name = {"ru": "Russian", "en": "English", "de": "German"}.get(lang, "Russian")
 
@@ -384,13 +384,13 @@ class N1NService:
             "- Do NOT use markdown (**, __, `)\n"
             "- Use emoji at the start of blocks\n"
             "- Separate blocks with a blank line\n"
-            "- Do NOT mention specific zodiac signs\n"
+            "- Mention the zodiac sign if provided\n"
             "- Do NOT mention numbers and dates\n"
             "- Tone: friendly, warm\n"
             f"- IMPORTANT: Answer ONLY in {lang_name}\n"
         )
         user_prompt = (
-            f"Compose an astrological horoscope for {today}.\n\n"
+            f"Compose an astrological horoscope for {sign or 'general'} on {today}.\n\n"
             "Structure:\n"
             "\U0001F305 GENERAL FORECAST\n[3-4 sentences]\n\n"
             "\U0001F4AB PLANETARY INFLUENCES\n[2-3 sentences]\n\n"

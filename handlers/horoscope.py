@@ -28,7 +28,17 @@ async def daily_horoscope_handler(callback: CallbackQuery):
     lang = await _lang(user_id)
     today_str = datetime.now().strftime("%d.%m.%Y")
 
-    cached = await get_daily_horoscope(lang=lang)
+    # Получаем знак из профиля
+    sign = ""
+    try:
+        user = await get_user(user_id)
+        if user and user.get("birth_date"):
+            bd = _dt.strptime(user["birth_date"], "%Y-%m-%d")
+            sign = AstrologyCalculator.get_zodiac_sign(bd) or ""
+    except Exception as _e:
+        logger.warning(f"sign detect failed: {_e}")
+
+    cached = await get_daily_horoscope(sign=sign, lang=lang)
     if cached:
         logger.info(t("HOROSCOPE_CACHE_LOG", lang))
         try:
@@ -48,10 +58,10 @@ async def daily_horoscope_handler(callback: CallbackQuery):
         processing_msg = await callback.message.answer(t("HOROSCOPE_PROCESSING", lang))
 
     try:
-        text = await ai_service.generate_horoscope(lang=lang)
+        text = await ai_service.generate_horoscope(sign=sign, lang=lang)
     except TypeError:
         try:
-            text = await ai_service.generate_horoscope()
+            text = await ai_service.generate_horoscope(sign=sign, lang=lang)
         except Exception as e:
             logger.error(f"horoscope error: {e}")
             text = None
@@ -60,7 +70,7 @@ async def daily_horoscope_handler(callback: CallbackQuery):
         text = None
 
     if text:
-        await set_daily_horoscope(text, lang=lang)
+        await set_daily_horoscope(text, sign=sign, lang=lang)
         logger.info(f"new horoscope saved: {len(text)} chars")
     else:
         logger.warning("horoscope fallback")
