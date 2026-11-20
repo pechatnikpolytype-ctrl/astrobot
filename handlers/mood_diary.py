@@ -193,14 +193,9 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
     usage = await get_ai_usage(user_id)
     if limit != -1 and usage >= limit:
         await state.clear()
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=t("MOOD_LIMIT_BUY", lang), callback_data="check_status")],
-            [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
-        ])
-        await message.answer(
-            f"{t('MOOD_LIMIT_TITLE', lang)}\n\n{t('MOOD_LIMIT_DESC', lang, usage=usage, limit=limit)}",
-            reply_markup=keyboard,
-        )
+        from database.postgres_db import get_limit_message, is_admin
+        limit_text, kb = await get_limit_message(user_id, lang, t, is_admin, usage=usage, limit=limit)
+        await message.answer(limit_text, reply_markup=kb)
         return
 
     processing = await message.answer(t("MOOD_PROCESSING", lang))

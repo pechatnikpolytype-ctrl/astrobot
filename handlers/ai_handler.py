@@ -96,15 +96,12 @@ async def start_ai_question(callback: CallbackQuery, state: FSMContext):
     usage = await get_ai_usage(user_id)
 
     if limit != -1 and usage >= limit:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=t("AI_LIMIT_BUY", lang), callback_data="check_status")],
-            [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
-        ])
-        limit_text = t("AI_LIMIT_TITLE", lang) + "\n\n" + t("AI_LIMIT_DESC", lang, usage=usage, limit=limit)
+        from database.postgres_db import get_limit_message, is_admin
+        limit_text, kb = await get_limit_message(user_id, lang, t, is_admin, usage=usage, limit=limit)
         try:
-            await callback.message.edit_text(limit_text, reply_markup=keyboard)
+            await callback.message.edit_text(limit_text, reply_markup=kb)
         except Exception:
-            await callback.message.answer(limit_text, reply_markup=keyboard)
+            await callback.message.answer(limit_text, reply_markup=kb)
         return
 
     await state.set_state(AIQuestionStates.waiting_question)
@@ -134,14 +131,9 @@ async def process_ai_question(message: Message, state: FSMContext):
 
     if limit != -1 and usage >= limit:
         await state.clear()
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=t("AI_LIMIT_BUY", lang), callback_data="check_status")],
-            [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
-        ])
-        await message.answer(
-            t("AI_LIMIT_TITLE", lang) + "\n\n" + t("AI_LIMIT_DESC", lang, usage=usage, limit=limit),
-            reply_markup=keyboard
-        )
+        from database.postgres_db import get_limit_message, is_admin
+        limit_text, kb = await get_limit_message(user_id, lang, t, is_admin, usage=usage, limit=limit)
+        await message.answer(limit_text, reply_markup=kb)
         return
 
     processing_msg = await message.answer(t("AI_PROCESSING", lang))

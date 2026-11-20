@@ -589,6 +589,48 @@ async def get_user_ai_limit(user_id: int) -> int:
     return limits.get("free", 20)
 
 
+
+async def get_limit_message(user_id: int, lang: str, t_func, is_admin_func, usage: int = 0, limit: int = 0):
+    """Возвращает (text, keyboard) для исчерпанного лимита.
+    - админ: безлимит, сюда не должен попадать (на всякий случай — только «Назад»)
+    - платный: предупреждение без кнопки покупки
+    - бесплатный: предложение купить
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    admin = await is_admin_func(user_id)
+    paid = await is_paid(user_id)
+
+    if admin:
+        # Админ — безлимит. Если всё же попал сюда — просто назад.
+        text = (
+            t_func("AI_LIMIT_REACHED_PAID", lang) + "\n\n"
+            + t_func("AI_LIMIT_DESC", lang, usage=usage, limit=limit)
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t_func("BTN_BACK_MENU", lang), callback_data="main_menu")],
+        ])
+    elif paid:
+        # Платный — предупреждение, без покупки
+        text = (
+            t_func("AI_LIMIT_REACHED_PAID", lang) + "\n\n"
+            + t_func("AI_LIMIT_DESC", lang, usage=usage, limit=limit)
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t_func("BTN_BACK_MENU", lang), callback_data="main_menu")],
+        ])
+    else:
+        # Бесплатный — предложение купить
+        text = (
+            t_func("AI_LIMIT_REACHED_FREE", lang) + "\n\n"
+            + t_func("AI_LIMIT_DESC", lang, usage=usage, limit=limit)
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t_func("AI_LIMIT_BUY", lang), callback_data="check_status")],
+            [InlineKeyboardButton(text=t_func("BTN_BACK_MENU", lang), callback_data="main_menu")],
+        ])
+    return text, keyboard
+
 async def get_ai_usage(user_id: int) -> int:
     """Сколько запросов сделал пользователь сегодня."""
     today = date.today()

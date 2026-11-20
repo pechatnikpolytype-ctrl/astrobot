@@ -983,3 +983,7 @@ DREAM_LIMIT_INFO = "\U0001F52E Left: {left}/{limit}"
 DREAM_CACHE_NOTE = " (from cache)"
 DREAM_LEFT = "\u26a0\ufe0f {left} requests left."
 DREAM_LEFT_0 = "\u26a0\ufe0f Limit 0."
+
+# AI limit reached
+AI_LIMIT_REACHED_FREE = 'Free question limit reached. Subscribe to Premium to continue.'
+AI_LIMIT_REACHED_PAID = 'Your daily question limit is reached. It resets tomorrow.'

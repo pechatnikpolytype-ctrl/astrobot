@@ -983,3 +983,7 @@ DREAM_LIMIT_INFO = "\U0001F52E \u00dcbrig: {left}/{limit}"
 DREAM_CACHE_NOTE = " (aus Cache)"
 DREAM_LEFT = "\u26a0\ufe0f {left} Anfragen \u00fcbrig."
 DREAM_LEFT_0 = "\u26a0\ufe0f Limit 0."
+
+# AI limit reached
+AI_LIMIT_REACHED_FREE = 'Das kostenlose Fragenlimit ist erreicht. Abonnieren Sie Premium, um fortzufahren.'
+AI_LIMIT_REACHED_PAID = 'Ihr tägliches Fragenlimit ist erreicht. Es wird morgen zurückgesetzt.'

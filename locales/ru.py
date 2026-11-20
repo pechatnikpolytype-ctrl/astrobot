@@ -1019,3 +1019,7 @@ DREAM_LIMIT_INFO = "\U0001F52E \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c:
 DREAM_CACHE_NOTE = " (\u0438\u0437 \u043a\u044d\u0448\u0430)"
 DREAM_LEFT = "\u26a0\ufe0f {left} \u0437\u0430\u043f\u0440\u043e\u0441\u043e\u0432 \u043e\u0441\u0442\u0430\u043b\u043e\u0441\u044c."
 DREAM_LEFT_0 = "\u26a0\ufe0f \u041b\u0438\u043c\u0438\u0442 0."
+
+# AI limit reached
+AI_LIMIT_REACHED_FREE = 'Лимит бесплатных вопросов исчерпан. Оформите Premium, чтобы продолжить.'
+AI_LIMIT_REACHED_PAID = 'Ваш дневной лимит вопросов исчерпан. Он обновится завтра.'

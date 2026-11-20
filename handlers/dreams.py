@@ -55,11 +55,9 @@ async def _check_access(user_id: int, lang: str):
         limit, usage = -1, 0
 
     if limit != -1 and usage >= limit:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=t("DREAM_BTN_BUY", lang), callback_data="check_status")],
-            [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
-        ])
-        return False, t("DREAM_LIMIT_REACHED", lang, usage=usage, limit=limit), kb, True
+        from database.postgres_db import get_limit_message
+        limit_text, kb = await get_limit_message(user_id, lang, t, is_admin, usage=usage, limit=limit)
+        return False, limit_text, kb, True
 
     return True, None, None, False
 
