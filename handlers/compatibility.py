@@ -164,6 +164,18 @@ async def compatibility_start(callback: CallbackQuery, state: FSMContext):
 
     text = t("COMPAT_MENU_TITLE", lang)
     try:
+        from database.postgres_db import get_user_ai_limit, get_ai_usage
+        limit = await get_user_ai_limit(user_id)
+        usage = await get_ai_usage(user_id)
+        if limit == -1:
+            counter = t("AI_MENU_LIMIT_UNLIMITED", lang)
+        else:
+            left = max(0, limit - usage)
+            counter = t("AI_MENU_LIMIT", lang, left=left, limit=limit)
+        text = text + "\n\n" + counter
+    except Exception as _e:
+        logger.warning(f"counter failed: {_e}")
+    try:
         await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard(lang))
     except Exception:
         await callback.message.answer(text, reply_markup=back_to_menu_keyboard(lang))
