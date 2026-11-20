@@ -630,14 +630,16 @@ async def has_ai_access(user_id: int) -> bool:
 
 async def get_user_ai_limit(user_id: int) -> int:
     """Возвращает лимит для пользователя (-1 = без лимита)."""
+    import logging
+    _log = logging.getLogger(__name__)
     if await is_admin(user_id):
-        return -1  # без лимита
-
+        _log.info(f"[LIMIT] user={user_id} admin -> -1")
+        return -1
     limits = await get_ai_limits()
     paid = await is_paid(user_id)
-    if paid:
-        return limits.get("premium", 100)
-    return limits.get("free", 20)
+    result = limits.get("premium", 100) if paid else limits.get("free", 20)
+    _log.info(f"[LIMIT] user={user_id} paid={paid} -> {result} (limits={limits})")
+    return result
 
 
 
