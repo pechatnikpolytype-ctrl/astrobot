@@ -64,13 +64,24 @@ async def profile_handler(callback: CallbackQuery):
         except Exception:
             pass
 
-    status = t("PROFILE_STATUS_PREMIUM", lang) if user_data.get("is_paid") else t("PROFILE_STATUS_FREE", lang)
+    from database.postgres_db import is_trial_active
+    try:
+        _trial = await is_trial_active(user_id)
+    except Exception:
+        _trial = False
+    if _trial:
+        status = "🎁 Триал"
+    elif user_data.get("is_paid"):
+        status = t("PROFILE_STATUS_PREMIUM", lang)
+    else:
+        status = t("PROFILE_STATUS_FREE", lang)
     limit = await get_user_ai_limit(user_id)
     usage = await get_ai_usage(user_id)
     if limit == -1:
         ai_line = t("PROFILE_AI_UNLIMITED", lang)
     else:
-        ai_line = t("PROFILE_AI_LIMITED", lang, usage=usage, limit=limit)
+        left = max(0, limit - usage)
+        ai_line = t("PROFILE_AI_LIMITED", lang, usage=left, limit=limit)
 
     empty = t("PROFILE_EMPTY", lang)
     empty_bio = t("PROFILE_EMPTY_BIO", lang)
