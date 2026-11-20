@@ -252,6 +252,11 @@ async def process_partner2(message: Message, state: FSMContext):
             if ai_result:
                 result = ai_result
                 await set_setting(cache_key, ai_result)
+                try:
+                    from database.postgres_db import increment_ai_usage
+                    await increment_ai_usage(user_id)
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"AI compat error: {e}")
 

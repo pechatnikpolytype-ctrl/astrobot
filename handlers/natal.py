@@ -143,6 +143,11 @@ async def natal_finish(message: Message, state: FSMContext):
         try:
             ai_text = await natal_service.generate_ai_report(chart_data, lang=lang)
             chart_data["ai_interpretation"] = (ai_text or "")[:1500]
+            try:
+                from database.postgres_db import increment_ai_usage
+                await increment_ai_usage(user_id)
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"шибка AI: {e}")
             chart_data["ai_interpretation"] = ""
@@ -238,6 +243,11 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             try:
                 ai_text = await natal_service.generate_ai_report(chart_data, lang=lang)
                 chart_data["ai_interpretation"] = (ai_text or "")[:1500]
+                try:
+                    from database.postgres_db import increment_ai_usage
+                    await increment_ai_usage(user_id)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"шибка AI при PDF: {e}")
                 chart_data["ai_interpretation"] = ""

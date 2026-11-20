@@ -64,6 +64,11 @@ async def pdf_natal(callback: CallbackQuery):
         try:
             ai_text = await natal_service.generate_ai_report(chart_data, lang=lang)
             chart_data["ai_interpretation"] = (ai_text or "")[:1500]
+            try:
+                from database.postgres_db import increment_ai_usage
+                await increment_ai_usage(user_id)
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"шибка AI: {e}")
             chart_data["ai_interpretation"] = ""
@@ -132,6 +137,11 @@ async def pdf_horoscope(callback: CallbackQuery):
 
         response = await ai_service.process_question(user_id, prompt, lang=lang)
         horoscope_text = response.get("message", "-")
+        try:
+            from database.postgres_db import increment_ai_usage
+            await increment_ai_usage(user_id)
+        except Exception:
+            pass
 
         pdf_data = {
             "user_name": user_name,
