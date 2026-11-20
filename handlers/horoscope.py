@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from keyboards.main import back_to_menu_keyboard
 from ai_service_n1n import ai_service
-from database.postgres_db import get_daily_horoscope, set_daily_horoscope, get_user_lang_cached
+from database.postgres_db import get_daily_horoscope, set_daily_horoscope, get_user_lang_cached, get_user
 from config import MULTILANG_ENABLED
 from locales import t
 

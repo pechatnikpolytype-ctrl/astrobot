@@ -96,7 +96,7 @@ async def start_ai_question(callback: CallbackQuery, state: FSMContext):
     usage = await get_ai_usage(user_id)
 
     if limit != -1 and usage >= limit:
-        from database.postgres_db import get_limit_message, is_admin
+        from database.postgres_db import get_limit_message
         limit_text, kb = await get_limit_message(user_id, lang, t, is_admin, usage=usage, limit=limit)
         try:
             await callback.message.edit_text(limit_text, reply_markup=kb)
@@ -131,7 +131,7 @@ async def process_ai_question(message: Message, state: FSMContext):
 
     if limit != -1 and usage >= limit:
         await state.clear()
-        from database.postgres_db import get_limit_message, is_admin
+        from database.postgres_db import get_limit_message
         limit_text, kb = await get_limit_message(user_id, lang, t, is_admin, usage=usage, limit=limit)
         await message.answer(limit_text, reply_markup=kb)
         return
