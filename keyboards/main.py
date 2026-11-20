@@ -118,6 +118,13 @@ def pdf_type_keyboard(lang: str = "ru"):
     return kb.as_markup()
 
 
+def back_to_menu_keyboard_no_support(lang: str = "ru"):
+    """Клавиатура без кнопки поддержки (для гороскопа)."""
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")
+    return kb.as_markup()
+
+
 def back_to_menu_keyboard(lang: str = "ru"):
     kb = InlineKeyboardBuilder()
     kb.button(text="👤 Поддержка", url="https://t.me/Nimforman")

@@ -37,10 +37,12 @@ async def _check_access(user_id: int, lang: str):
     try:
         paid = await is_paid(user_id)
         admin = await is_admin(user_id)
+        from database.postgres_db import is_trial_active
+        trial = await is_trial_active(user_id)
     except Exception:
-        paid, admin = False, False
+        paid, admin, trial = False, False, False
 
-    if not paid and not admin:
+    if not paid and not admin and not trial:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t("DREAM_BTN_BUY", lang), callback_data="check_status")],
             [InlineKeyboardButton(text=t("BTN_BACK_MENU", lang), callback_data="main_menu")],
@@ -202,7 +204,16 @@ async def dream_process(message: Message, state: FSMContext):
         # Тратим лимит ТОЛЬКО если AI сгенерировал (не из кэша)
         if not from_cache:
             try:
-                await increment_ai_usage(user_id)
+                new_usage = await increment_ai_usage(user_id)
+                try:
+                    _lim = await get_user_ai_limit(user_id)
+                    if _lim == -1:
+                        _left_txt = t("DREAM_LIMIT_UNLIMITED", lang)
+                    else:
+                        _left_txt = t("DREAM_LIMIT_INFO", lang, left=max(0, _lim - new_usage), limit=_lim)
+                    await message.answer(_left_txt)
+                except Exception:
+                    pass
             except Exception:
                 pass
 

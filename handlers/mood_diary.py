@@ -241,7 +241,16 @@ async def mood_story(message: Message, state: FSMContext, bot: Bot):
 
         if ai_response:
             try:
-                await increment_ai_usage(user_id)
+                new_usage = await increment_ai_usage(user_id)
+                try:
+                    _lim = await get_user_ai_limit(user_id)
+                    if _lim == -1:
+                        _left_txt = t("AI_MENU_LIMIT_UNLIMITED", lang)
+                    else:
+                        _left_txt = t("AI_MENU_LIMIT", lang, left=max(0, _lim - new_usage), limit=_lim)
+                    await message.answer(_left_txt)
+                except Exception:
+                    pass
             except Exception:
                 pass
 

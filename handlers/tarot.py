@@ -73,7 +73,13 @@ async def tarot_main_menu(callback: CallbackQuery, state: FSMContext):
 
     text = t("TAROT_MENU_TITLE", lang)
 
-    if not paid and not admin:
+    trial = False
+    try:
+        from database.postgres_db import is_trial_active
+        trial = await is_trial_active(user_id)
+    except Exception:
+        pass
+    if not paid and not admin and not trial:
         text += t("TAROT_LOCK", lang)
         try:
             await callback.message.edit_text(text, reply_markup=_pay_kb(lang))

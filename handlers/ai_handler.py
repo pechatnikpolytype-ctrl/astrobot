@@ -92,6 +92,15 @@ async def ai_question_menu(callback: CallbackQuery):
 async def start_ai_question(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     lang = await _lang(user_id)
+    from database.postgres_db import has_ai_access
+    if not await has_ai_access(user_id):
+        from keyboards.main import back_to_menu_keyboard
+        await callback.message.edit_text(
+            "🔒 Для доступа к этой функции оформите подписку или начните бесплатный триал.",
+            reply_markup=back_to_menu_keyboard(lang)
+        )
+        return
+
     limit = await get_user_ai_limit(user_id)
     usage = await get_ai_usage(user_id)
 
@@ -124,6 +133,15 @@ async def process_ai_question(message: Message, state: FSMContext):
     valid, result = validator.validate_question(message.text)
     if not valid:
         await message.answer(f"\u274c {result}", reply_markup=_ai_dialog_kb(lang))
+        return
+
+    from database.postgres_db import has_ai_access
+    if not await has_ai_access(user_id):
+        from keyboards.main import back_to_menu_keyboard
+        await callback.message.edit_text(
+            "🔒 Для доступа к этой функции оформите подписку или начните бесплатный триал.",
+            reply_markup=back_to_menu_keyboard(lang)
+        )
         return
 
     limit = await get_user_ai_limit(user_id)
@@ -161,7 +179,16 @@ async def process_ai_question(message: Message, state: FSMContext):
         facts = response.get("facts", [])
 
         if not from_cache:
-            await increment_ai_usage(user_id)
+            new_usage = await increment_ai_usage(user_id)
+            try:
+                _lim = await get_user_ai_limit(user_id)
+                if _lim == -1:
+                    _left_txt = t("AI_MENU_LIMIT_UNLIMITED", lang)
+                else:
+                    _left_txt = t("AI_MENU_LIMIT", lang, left=max(0, _lim - new_usage), limit=_lim)
+                await message.answer(_left_txt)
+            except Exception:
+                pass
 
         admin_marker = ""
         if await is_admin(user_id):

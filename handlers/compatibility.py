@@ -149,7 +149,14 @@ async def compatibility_start(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     lang = await _lang(user_id)
 
-    if user_id not in ADMINS and not await is_paid(user_id):
+    _paid = await is_paid(user_id)
+    _trial = False
+    try:
+        from database.postgres_db import is_trial_active
+        _trial = await is_trial_active(user_id)
+    except Exception:
+        pass
+    if user_id not in ADMINS and not _paid and not _trial:
         try:
             await callback.message.edit_text(
                 t("COMPAT_SUB_LOCK", lang),

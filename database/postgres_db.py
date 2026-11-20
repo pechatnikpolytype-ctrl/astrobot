@@ -305,9 +305,22 @@ async def update_birth_data(user_id: int, birth_date: str, birth_time: str, birt
 
 
 async def set_subscription(user_id: int, days: int):
-    end_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+    """Продлевает подписку на days дней. Если уже активна — прибавляет к текущей дате."""
     pool = await db.create_pool()
     async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT subscription_end FROM users WHERE user_id = $1", user_id
+        )
+        today = datetime.now().date()
+        base = today
+        if row and row["subscription_end"]:
+            try:
+                cur = datetime.strptime(str(row["subscription_end"])[:10], "%Y-%m-%d").date()
+                if cur > today:
+                    base = cur
+            except Exception:
+                pass
+        end_date = (base + timedelta(days=days)).strftime("%Y-%m-%d")
         await conn.execute("""
             UPDATE users SET is_paid = TRUE, subscription_end = $2 WHERE user_id = $1
         """, user_id, end_date)
@@ -575,6 +588,44 @@ async def set_ai_limits(free: int, premium: int, count_cached: bool = None):
         "count_cached": count_cached if count_cached is not None else current.get("count_cached", False),
     }
     await set_setting("ai_limits", new)
+
+
+
+async def is_trial_active(user_id: int) -> bool:
+    """Проверяет, активен ли триал у пользователя."""
+    trial_cfg = await get_setting("trial", {"enabled": False})
+    if not trial_cfg.get("enabled"):
+        return False
+    # Триал обычно записывается в отдельное поле, если его нет — проверяем по дате регистрации
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT created_at FROM users WHERE user_id = $1", user_id)
+    if not row or not row["created_at"]:
+        return False
+    # если created_at текстовый, приводим к дате
+    try:
+        from datetime import datetime, timedelta
+        if isinstance(row["created_at"], str):
+            created = datetime.fromisoformat(row["created_at"])
+        else:
+            created = row["created_at"]
+        return datetime.now() <= created + timedelta(days=trial_cfg["days"])
+    except Exception:
+        return False
+
+
+
+async def has_ai_access(user_id: int) -> bool:
+    """Проверяет, имеет ли пользователь доступ к AI-функциям.
+    Доступ есть у: админов, платных, и активных триальных.
+    """
+    if await is_admin(user_id):
+        return True
+    if await is_paid(user_id):
+        return True
+    if await is_trial_active(user_id):
+        return True
+    return False
 
 
 async def get_user_ai_limit(user_id: int) -> int:
