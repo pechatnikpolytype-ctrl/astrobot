@@ -75,7 +75,7 @@ async def start_handler(message: Message, command: CommandObject = None):
             await set_subscription(user_id, trial_days)
             await set_trial_used(user_id)
             await message.answer(
-                f"🎁 Вам активирован пробный период на {trial_days} дн.!\\n"
+                f"🎁 Вам активирован пробный период на {trial_days} дн.!\n"
                 f"Пользуйтесь всеми функциями бота бесплатно."
             )
         elif not paid and trial_used:
