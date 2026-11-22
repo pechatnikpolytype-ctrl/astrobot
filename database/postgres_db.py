@@ -389,9 +389,12 @@ async def set_trial_used(user_id: int):
 
 
 async def reset_all_trials():
+    """Сбрасывает триал у всех: trial_used=False, is_paid=False, subscription_end=NULL."""
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        await conn.execute("UPDATE users SET trial_used = FALSE")
+        await conn.execute(
+            "UPDATE users SET trial_used = FALSE, is_paid = FALSE, subscription_end = NULL"
+        )
 
 
 async def count_trial_used() -> int:
