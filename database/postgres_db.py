@@ -326,6 +326,23 @@ async def set_subscription(user_id: int, days: int):
         """, user_id, end_date)
 
 
+
+async def get_subscription_days_left(user_id: int) -> int:
+    """Возвращает, сколько дней осталось до subscription_end (0, если нет подписки)."""
+    pool = await db.create_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT subscription_end FROM users WHERE user_id = $1", user_id)
+    if not row or not row["subscription_end"]:
+        return 0
+    try:
+        end = datetime.strptime(str(row["subscription_end"])[:10], "%Y-%m-%d").date()
+    except Exception:
+        return 0
+    today = datetime.now().date()
+    delta = (end - today).days
+    return max(0, delta)
+
+
 async def is_paid(user_id: int) -> bool:
     if FREE_MODE:
         return True

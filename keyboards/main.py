@@ -39,6 +39,8 @@ def main_menu_keyboard(user_id, lang: str = "ru"):
     # --- Профиль / Язык ---
     kb.button(text=t("BTN_PROFILE", lang), callback_data="profile")
     kb.button(text=t("BTN_LANG", lang), callback_data="lang_menu")
+    kb.button(text="⭐ Подписка", callback_data="subscription_info")
+
     # --- Админ ---
     from config import ADMINS
     if user_id in ADMINS:

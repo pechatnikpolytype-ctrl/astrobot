@@ -243,6 +243,14 @@ async def process_partner2(message: Message, state: FSMContext):
         logger.warning(f"compat cache error: {e}")
 
     if not result:
+        # Проверка лимита
+        from database.postgres_db import get_user_ai_limit, get_ai_usage, get_limit_message, is_admin
+        _lim = await get_user_ai_limit(message.from_user.id)
+        _use = await get_ai_usage(message.from_user.id)
+        if _lim != -1 and _use >= _lim:
+            _txt, _kb = await get_limit_message(message.from_user.id, lang, t, is_admin, usage=_use, limit=_lim)
+            await message.answer(_txt, reply_markup=_kb)
+            return
         try:
             ai_result = await ai_service.generate_compatibility(
                 sign_display(p1["sign"], "en"),

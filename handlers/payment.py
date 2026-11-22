@@ -188,3 +188,34 @@ async def cmd_refund(message: Message):
 @router.message(Command("paysupport"))
 async def cmd_pay_support(message: Message):
     await message.answer("Проблемы с оплатой? Напишите @SupportBot")
+
+
+@router.callback_query(F.data == "subscription_info")
+async def subscription_info(callback: CallbackQuery):
+    from database.postgres_db import get_subscription_days_left, get_pricing, is_trial_active
+    from keyboards.main import payment_keyboard
+    from locales import t
+    import logging
+    _log = logging.getLogger(__name__)
+    user_id = callback.from_user.id
+    lang = "ru"
+    try:
+        from database.postgres_db import get_user_lang_cached
+        lang = await get_user_lang_cached(user_id) or "ru"
+    except Exception:
+        pass
+    days_left = await get_subscription_days_left(user_id)
+    trial = await is_trial_active(user_id)
+    pricing = await get_pricing()
+    if days_left > 0 and not trial:
+        text = f"⭐ Ваша подписка активна\n\nОсталось дней: {days_left}\n\nХотите продлить? Дни будут добавлены к текущему сроку."
+    elif trial:
+        text = f"🎁 Пробный период\n\nОсталось дней: {days_left}\n\nОформите подписку, чтобы продолжить без ограничений."
+    else:
+        text = "⭐ Подписка\n\nВыберите тариф:"
+    try:
+        await callback.message.edit_text(text, reply_markup=await payment_keyboard(lang))
+    except Exception:
+        await callback.message.answer(text, reply_markup=await payment_keyboard(lang))
+    await callback.answer()
+

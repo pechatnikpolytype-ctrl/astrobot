@@ -146,6 +146,15 @@ async def tarot_process_question(message: Message, state: FSMContext):
     if len(question) > 500:
         question = question[:500]
 
+    # Проверка лимита
+    from database.postgres_db import get_user_ai_limit, get_ai_usage, get_limit_message, is_admin
+    _lim = await get_user_ai_limit(user_id)
+    _use = await get_ai_usage(user_id)
+    if _lim != -1 and _use >= _lim:
+        _txt, _kb = await get_limit_message(user_id, lang, t, is_admin, usage=_use, limit=_lim)
+        await message.answer(_txt, reply_markup=_kb)
+        return
+
     processing = await message.answer(t("TAROT_PROCESSING", lang))
 
     try:
